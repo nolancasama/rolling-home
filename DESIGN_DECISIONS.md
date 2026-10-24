@@ -90,6 +90,15 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
   blockers, so the player can never be soft-locked in the driver's seat. Fixable ones must be packed first.
 - **Menu backdrop:** the van camped at Red Rock Flats at golden hour (the game's fantasy in one shot).
 - **Publishing:** public GitHub repo with GitHub Pages via Actions (tests → build → deploy), as requested.
+- **Engine force model:** below 12 m/s the engine gives a torque plateau (P / 12 m/s) that scales with engine
+  condition; above it, constant power; tires cap force at 0.75·m·g·grip. *Why:* the first model was
+  traction-limited at low speed, so a worn engine accelerated almost like a healthy one (acceptance caught
+  it: 13.7 vs 13.1 m/s after 5 s). Now 0-60 mph ≈ 11 s (van) / 13 s (Class C) and worn engines are clearly
+  slower (21.0 vs 13.8 m/s after 8 s with limp mode).
+- **Economy tuning** (`tools/balance.test.ts`, a scripted 30-day player): delivery pay cut ~25%
+  (base 30, 1.15/km, 0.24/kg). An always-working bot (one delivery per day) ends Balanced at ~$3.3-4.7k, Hard
+  at ~$2-3k; real players who explore and upgrade land near the $1,500 goal. RV condition drifts to ~50% by
+  day 30, so the goal's condition check makes at least one repair worthwhile.
 
 ### Architecture
 - `src/data` (content), `src/sim` (rules + state) and `src/world` (terrain/road/collider model) are pure TS:

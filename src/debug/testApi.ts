@@ -12,7 +12,7 @@ import { worldTargets } from '../game/interactions';
 // Automation/test hooks on window.__rh. Used by the acceptance harness; harmless in play.
 
 export function installTestApi(game: Game) {
-  let pilot: { route: Route; resolve: (ok: boolean) => void; started: number; maxMs: number; stopAt: number } | null = null;
+  let pilot: { route: Route; resolve: (ok: boolean, speed: number) => void; started: number; maxMs: number; stopAt: number; full?: boolean } | null = null;
 
   const pilotStep = () => {
     requestAnimationFrame(pilotStep);
@@ -53,17 +53,22 @@ export function installTestApi(game: Game) {
     let target = maxTurn > 0.5 ? 9 : maxTurn > 0.25 ? 14 : 22;
     target = Math.min(target, Math.max(3, remaining * 0.35));
     const spd = p.speed;
-    const throttle = spd < target - 0.5 ? Math.min(1, (target - spd) * 0.4) : 0;
-    const brake = spd > target + 1.5 ? Math.min(1, (spd - target) * 0.3) : 0;
+    let throttle = spd < target - 0.5 ? Math.min(1, (target - spd) * 0.4) : 0;
+    let brake = spd > target + 1.5 ? Math.min(1, (spd - target) * 0.3) : 0;
+    if (pilot.full) {
+      throttle = 1;
+      brake = 0;
+    }
     game.drive.auto = { throttle, brake, steer: Math.max(-1, Math.min(1, err * 2.2)) };
     if (remaining < pilot.stopAt || performance.now() - pilot.started > pilot.maxMs) {
+      const endSpeed = p.speed;
       game.drive.auto = { throttle: 0, brake: 1, steer: 0 };
       const ok = remaining < pilot.stopAt;
       const res = pilot.resolve;
       pilot = null;
       setTimeout(() => {
         game.drive.auto = null;
-        res(ok);
+        res(ok, endSpeed);
       }, 1500);
     }
   };
@@ -177,6 +182,26 @@ export function installTestApi(game: Game) {
       const route: Route = { steps: [], points: pts, worldLength: 0, km: 0, minutes: 0, majorEdges: [], destNode: '' };
       return new Promise((resolve) => {
         pilot = { route, resolve, started: performance.now(), maxMs, stopAt };
+      });
+    },
+    /** Full-throttle run along a road edge for `seconds`; resolves with the final speed (m/s). */
+    speedRun(edgeId: string, along: number, seconds: number): Promise<number> {
+      const e = EDGE_BY_ID[edgeId];
+      const start = pointAlong(e, along);
+      const heading = Math.atan2(start.dx, start.dz);
+      const sx = start.x + -start.dz * 1.8, sz = start.z + start.dx * 1.8;
+      const s = game.sim!.s;
+      activeVehicle(s).pose = { x: sx, z: sz, heading };
+      game.phys!.place(sx, sz, heading);
+      game.phys!.perf = null;
+      const pts: [number, number][] = [];
+      for (let a = along; a < Math.min(e.length, along + 600); a += 3) {
+        const q = pointAlong(e, a);
+        pts.push([q.x, q.z]);
+      }
+      const route: Route = { steps: [], points: pts, worldLength: 0, km: 0, minutes: 0, majorEdges: [], destNode: '' };
+      return new Promise<number>((resolve) => {
+        pilot = { route, resolve: (_ok, speed) => resolve(speed), started: performance.now(), maxMs: seconds * 1000, stopAt: -1, full: true };
       });
     },
     placeNode: (id: string) => PLACES.find((p) => p.id === id)?.node,

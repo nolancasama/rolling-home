@@ -111,9 +111,9 @@ export const ECONOMY = {
 export const JOBS = {
   maxActive: 3,
   graceHours: 12,
-  baseDelivery: 40,
-  perKm: 1.55,
-  perKg: 0.32,
+  baseDelivery: 30,
+  perKm: 1.15,
+  perKg: 0.24,
   fragileBonus: 0.25,
   coldBonus: 0.2,
   remoteMaxHoursPerDay: 6,

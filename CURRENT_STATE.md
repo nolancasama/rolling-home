@@ -6,11 +6,11 @@ _Last updated: 2026-10-25_
 
 Playable vertical slice in active development. Live build: https://nolancasama.github.io/rolling-home/
 (GitHub Pages, deployed by `.github/workflows/pages.yml` on every push to `main`; the workflow runs the unit
-tests before building).
+tests before building). Repo: https://github.com/nolancasama/rolling-home (public).
 
 ## What Exists
 
-**Simulation (pure TS, `src/sim`, `src/data`, `src/world`; 28 Vitest tests pass)**
+**Simulation (pure TS, `src/sim`, `src/data`, `src/world`)**
 - Game state as one JSON object; save/load round-trips exactly (3 slots + autosave in localStorage).
 - Two vehicles (1997 camper van, 2004 Class C) with GVWR, front/rear GAWR, tank positions, compartments,
   system slots, interior floor plans and default equipment. Van starts at 2,799 kg (601 kg payload); Class C at
@@ -37,41 +37,45 @@ tests before building).
   pedestrians, campers at occupied sites, NPC camps, markers.
 - Procedural van and Class C (exteriors with real window openings, interiors, wheels, doors, awning, solar,
   rust/dirt), furniture models, character with animation.
-- Modes: explore (3rd person), interior (1st person), drive (arcade physics, chase/cockpit), furnish
-  (overhead cutaway editor with live validation and weight panel).
+- Modes: explore (3rd person), interior (1st person), drive (arcade physics with an engine torque plateau,
+  chase/cockpit), furnish (overhead cutaway editor with live validation and weight panel).
 - UI: main menu (Red Rock Flats backdrop), new game (appearance, vehicle, difficulty), HUD, phone (map/GPS +
-  assisted travel, jobs, finances, RV status, inventory, journal), shop, job board, dock + cargo loading,
-  campground, hookups, fuel/water/dump/propane, mechanic, procedures, eat/cook/sleep, NPC dialog, pause,
-  settings, save/load.
+  destination list + assisted travel, jobs, finances, RV status, inventory, journal), shop, job board, dock +
+  cargo loading, campground, hookups, fuel/water/dump/propane, mechanic, procedures, eat/cook/sleep, NPC
+  dialog, pause, settings, save/load.
 - Procedural audio (engine, road, ambience, one-shots, generative music).
-- `window.__rh` test API (snapshot, teleport, act, autodrive with real physics, furnishing helpers).
+- `window.__rh` test API (snapshot, teleport, act, autodrive/speedRun with real physics, furnishing helpers).
+
+**Verification**
+- `npm test`: 32 Vitest tests (terrain, simulation, vehicle physics). Run in CI before every deploy.
+- `npm run acceptance`: Playwright harness (`acceptance/run.mjs`, follows `~/.claude/workers/harness/PROTOCOL.md`)
+  driving the real game in Chromium at 1366×768. 12 sections / 39 checks covering the plan's 30-step loop
+  (startup → explore → interior → shopping → cargo → driving → delivery → camping → living → furnishing →
+  save/load → integration). Trusted: known-good full run PASS 39/39 (≈216 s); known-bad probe (injected
+  gray-water bug) → PRODUCT_FAILURE, exit 1. Manifest at `.tmp/acceptance/<full|section>/manifest.json`.
+- `npx vitest run --config vitest.tools.config.ts`: 30-day scripted-player economy report (manual, not CI).
+  Latest: Balanced ends ~$3.3–4.7k, Hard ~$2–3k, RV condition ~50% by day 30.
 
 ## Current Work
 
-Visual polish pass from screenshot review (done: menu backdrop, junction z-fighting, packed cargo, rust,
-rear windows, cockpit fill light, HUD layout). Next: the Playwright acceptance harness for the 30-step
-core loop.
+Polish after the acceptance pass: visual review of the routes, Class C, Pine Lake, Mesa City and campgrounds.
 
 ## Known Issues
 
-- The acceptance harness (`npm run acceptance`) is not written yet; the full 30-step loop has only been
-  exercised piecewise (unit tests + manual browser checks of menu, explore, interior, furnish, drive, shop,
-  job board, phone).
-- Long drives (Dusty Junction → Pine Lake) and the Class C have not been visually reviewed in the browser yet.
+- Long drives (Dusty Junction → Pine Lake), the narrow forest track and the Class C have been driven by the
+  harness but not visually reviewed in the browser yet.
 - Bundle is ~1 MB (286 KB gzip); Vite warns about chunk size. Fine for now.
 - Graphics quality changes apply only after reload.
 - Pedestrians/NPCs are simple; no walkable shop interiors (by design for the MVP).
+- Performance on the "low" preset at 1366×768 (school Chromebook class) has not been measured.
 
 ## Next Steps
 
-1. Write `acceptance/run.mjs` following `~/.claude/workers/harness/PROTOCOL.md` (sections, `--only`,
-   `--list-sections`, manifest) covering the plan's 30-step scenario + integration checks; prove it with one
-   known-good pass and one known-bad fail.
-2. Drive the routes in the browser (van and Class C), fix physics/visual issues found on mountain roads,
+1. Drive the routes in the browser (van and Class C); fix physics/visual issues found on mountain roads,
    campgrounds and the narrow track.
-3. Review Pine Lake, Mesa City, the truck stop and campgrounds visually; add town dressing where sparse.
-4. Balance pass with a scripted 30-day economy simulation.
-5. Performance check at 1366×768 on the "low" preset.
+2. Review Pine Lake, Mesa City, the truck stop and campgrounds visually; add town dressing where sparse.
+3. Performance check at 1366×768 on the "low" preset.
+4. Re-run `npm run acceptance` after gameplay changes (use `--only <section>` while iterating).
 
 ## Codex / Delegated Work
 

@@ -6,7 +6,8 @@ way they are and `CURRENT_STATE.md` for what is true right now.
 ## Run / test
 
 - `npm run dev` (or `start.bat`) → http://localhost:5190
-- `npm test` — Vitest unit/integration tests for the pure simulation (`test/`).
+- `npm test` — Vitest unit/integration tests for the pure simulation and vehicle physics (`test/`).
+- `npx vitest run --config vitest.tools.config.ts` — manual reports in `tools/` (30-day economy bot); not CI.
 - `npm run typecheck` — `tsc --noEmit` (strict).
 - `npm run acceptance` — Playwright acceptance harness (`acceptance/`), follows the workflow harness protocol
   (`--list-sections`, `--only <name>`, manifest at `.tmp/acceptance/<run>/manifest.json`).

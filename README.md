@@ -45,9 +45,10 @@ a home.
 ```bash
 npm install
 npm run dev        # http://localhost:5190
-npm test           # Vitest: simulation (weight, water, jobs, furnishing, save/load...)
+npm test           # Vitest: simulation (weight, water, jobs, furnishing, save/load...) + vehicle physics
 npm run typecheck  # tsc --noEmit (strict)
 npm run build      # production build to dist/
+npm run acceptance # Playwright: plays the 30-step core loop in Chromium (--list-sections, --only <name>)
 ```
 
 `src/sim`, `src/data` and `src/world` are pure TypeScript (no DOM or three.js) so the whole simulation is unit

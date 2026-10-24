@@ -133,8 +133,9 @@ export class VehiclePhysics {
     if (!this.reverse) {
       const throttle = engine ? inp.throttle : 0;
       const P = hd.powerKw * 1000 * p.power;
-      const fMax = m * 3.0 * Math.min(1, grip + 0.15);
-      let fe = throttle * Math.min(P / Math.max(vAbs, 2.5), fMax);
+      // torque plateau below ~12 m/s (scales with engine health), constant power above; tires cap it
+      const traction = m * G * grip * 0.75;
+      let fe = throttle * Math.min(P / Math.max(vAbs, 12), traction);
       const vmax = hd.maxSpeed * p.topSpeed;
       if (vAbs > vmax * 0.92) fe *= clamp(1 - (vAbs - vmax * 0.92) / (vmax * 0.08), 0, 1);
       force += fe;

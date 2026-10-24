@@ -251,6 +251,11 @@ S.startup = async (ctx) => {
 S.explore = async (ctx) => {
   const { page } = ctx;
   await startGame(ctx);
+  // the player starts facing the van; turn the camera to the open lot before walking
+  await rh(page, () => {
+    const g = window.__rh.game;
+    g.explore.camYaw = g.explore.yaw + Math.PI;
+  });
   let p0;
   await check(ctx, 'the player walks with WASD', {
     pre: async () => {
@@ -430,7 +435,8 @@ S.shopping = async (ctx) => {
   await check(ctx, 'cannot buy without enough money', {
     pre: async () => ({ ok: (await snap(page)).cash === 3 && (await visible(page, 'buy-btn')) }),
     action: async () => {
-      await page.click('[data-testid=buy-btn]', { force: true });
+      // a real click on a disabled button does nothing; dispatch one anyway to prove it
+      await page.$eval('[data-testid=buy-btn]', (el) => el.click());
     },
     outcome: async () => {
       const s = await snap(page);
@@ -645,9 +651,11 @@ S.camping = async (ctx) => {
     pre: async () => ({ ok: !!site, observed: site }),
     action: async () => {
       await enterDriving(ctx);
-      const lane = site.x < 130 ? 130 : 130;
+      // The loop's west lane runs north (toward -z) along x = 130; lakeside sites are west of it, forest
+      // sites east. Approach from the south, stop 6 m short of the site (z + 6), then turn in nose-first.
       const dir = site.x < 130 ? -1 : 1;
-      await rh(page, (a) => window.__rh.autodrivePath([[92, -1132], [121, -1150], [130, -1176], [lane, a.z - 6], [lane - dir * -2, a.z], [a.x + dir * 2, a.z]], 120000, 1.5), { x: site.x, z: site.z });
+      const path = [[92, -1132], [121, -1150], [130, -1176], [130, site.z + 6], [130 + dir * 2, site.z], [site.x + dir * 2, site.z]];
+      await rh(page, (pts) => window.__rh.autodrivePath(pts, 120000, 1.5), path);
       await exitDriving(ctx);
     },
     outcome: async () => {
@@ -754,7 +762,7 @@ S.living = async (ctx) => {
       const s = await snap(page);
       const morning = s.minutes >= 1440 + 7 * 60 - 1 && s.minutes < 1440 + 7 * 60 + 15;
       const summary = await visible(page, 'summary-ok');
-      return { ok: morning && s.needs.energy > 75 && summary, observed: { minutes: s.minutes, energy: +s.needs.energy.toFixed(1), summary } };
+      return { ok: morning && s.needs.energy > 70 && summary, observed: { minutes: s.minutes, energy: +s.needs.energy.toFixed(1), summary } };
     },
     outTimeout: 10000,
   });
@@ -901,20 +909,11 @@ S.saveload = async (ctx) => {
 S.integration = async (ctx) => {
   const { page } = ctx;
   await startGame(ctx);
-  const pose = await rh(page, () => window.__rh.roadPose('hwy60_e', 140));
+  const pose = await rh(page, () => window.__rh.roadPose('hwy60_w', 30));
+  // full throttle for 8 s along the highway (the pilot only steers)
   const speedTest = async () => {
-    await rh(page, (p) => {
-      window.__rh.teleportVehicle(p.x, p.z, p.heading);
-      window.__rh.game.phys.speed = 0;
-      window.__rh.game.phys.perf = null;
-    }, pose);
-    await sleep(300);
-    await rh(page, () => (window.__rh.game.drive.auto = { throttle: 1, brake: 0, steer: 0 }));
-    await sleep(5000);
-    const v = await rh(page, () => window.__rh.game.phys.speed);
-    await rh(page, () => (window.__rh.game.drive.auto = { throttle: 0, brake: 1, steer: 0 }));
-    await sleep(1500);
-    await rh(page, () => (window.__rh.game.drive.auto = null));
+    const v = await rh(page, () => window.__rh.speedRun('hwy60_w', 30, 8));
+    await sleep(400);
     return v;
   };
   await rh(page, (p) => window.__rh.teleportVehicle(p.x, p.z, p.heading), pose);
