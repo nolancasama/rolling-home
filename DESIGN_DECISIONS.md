@@ -75,6 +75,22 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
 - **Acceptance harness** following the user's harness protocol (sections, `--only`, manifest), driving the real
   game in Chromium, plus a pure headless simulation tested with Vitest.
 
+## 2026-10-25 — Implementation decisions
+
+- **Vehicle shells** are built from side profiles: flat side panels with real window holes plus a rim strip
+  around the outline, DoubleSide paint so the cab reads as painted metal from inside. Inner paneling only in
+  the living area. *Why:* see-through windows both ways without modeling every inner surface.
+- **Class C balance:** shell CG moved rearward (40/60 split) after the first pass started 68 kg over the front
+  axle rating; rear GAWR tightened to 3,350 kg so loading the rear bay with full tanks is a real constraint.
+- **Packed belongings** in loose floor space or on the roof render as boxes of their packed size, not as the
+  assembled furniture. Roof cargo hides in the furnishing cutaway.
+- **Junctions:** road ribbons overlap at intersections; shoulders and skirts sit below the asphalt so the
+  depth test always favors asphalt. Rejected: trimming ribbons at nodes (left uncovered terrain wedges).
+- **Pre-trip issues that cannot be fixed on the spot** (no straps, no room for outdoor gear) are warnings, not
+  blockers, so the player can never be soft-locked in the driver's seat. Fixable ones must be packed first.
+- **Menu backdrop:** the van camped at Red Rock Flats at golden hour (the game's fantasy in one shot).
+- **Publishing:** public GitHub repo with GitHub Pages via Actions (tests → build → deploy), as requested.
+
 ### Architecture
 - `src/data` (content), `src/sim` (rules + state) and `src/world` (terrain/road/collider model) are pure TS:
   no DOM, no three.js, no `Math.random`, no `Date.now`. The renderer, controllers and UI read state and call
