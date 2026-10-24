@@ -1,9 +1,11 @@
-import { PLACES } from '../data/map';
-import { wrapAngle } from '../sim/geo';
+import { ANCHOR_BY_ID, CAMPGROUND_BY_ID, PLACES } from '../data/map';
+import { worldToLocal, wrapAngle } from '../sim/geo';
+import { inReservedSite } from '../sim/camping';
+import { performance as vehiclePerformance } from '../sim/maintenance';
+import { vehicleAtAnchor } from '../sim/places';
 import { activeVehicle, capacities } from '../sim/vehicle';
 import { computeWeight } from '../sim/weight';
-import { routeTo, type Route } from '../world/roads';
-import { pointAlong } from '../world/roads';
+import { EDGE_BY_ID, pointAlong, routeTo, type Route } from '../world/roads';
 import type { Game } from '../game/game';
 import { worldTargets } from '../game/interactions';
 
@@ -163,10 +165,27 @@ export function installTestApi(game: Game) {
         pilot = { route, resolve, started: performance.now(), maxMs, stopAt: 1.5 };
       });
     },
+    /** Drive through explicit waypoints. */
+    autodrivePath(points: [number, number][], maxMs = 90000, stopAt = 2): Promise<boolean> {
+      const p = game.phys!;
+      const pts: [number, number][] = [[p.x, p.z]];
+      for (const q of points) {
+        const [ax, az] = pts[pts.length - 1];
+        const n = Math.max(1, Math.ceil(Math.hypot(q[0] - ax, q[1] - az) / 3));
+        for (let i = 1; i <= n; i++) pts.push([ax + ((q[0] - ax) * i) / n, az + ((q[1] - az) * i) / n]);
+      }
+      const route: Route = { steps: [], points: pts, worldLength: 0, km: 0, minutes: 0, majorEdges: [], destNode: '' };
+      return new Promise((resolve) => {
+        pilot = { route, resolve, started: performance.now(), maxMs, stopAt };
+      });
+    },
     placeNode: (id: string) => PLACES.find((p) => p.id === id)?.node,
-    edgePoint: (edgeId: string, along: number) => {
-      const e = (window as any).__edges?.find((x: any) => x.def.id === edgeId);
-      return e ? pointAlong(e, along) : null;
+    /** Pose on a road edge (right lane), heading along the edge. */
+    roadPose: (edgeId: string, along: number) => {
+      const e = EDGE_BY_ID[edgeId];
+      if (!e) return null;
+      const pt = pointAlong(e, along);
+      return { x: pt.x + -pt.dz * 1.8, z: pt.z + pt.dx * 1.8, heading: Math.atan2(pt.dx, pt.dz) };
     },
     furnish: {
       startMove: (uid: string) => game.furnish.startMove(uid),
@@ -176,6 +195,45 @@ export function installTestApi(game: Game) {
       done: () => game.furnish.done(),
     },
     save: (slot: 'slot1' | 'slot2' | 'slot3' | 'auto') => game.save(slot),
+    anchor: (id: string) => {
+      const a = ANCHOR_BY_ID[id];
+      return a ? { x: a.x, z: a.z, r: a.vehicleRadius ?? 0 } : null;
+    },
+    site: (campId: string, siteId: string) => {
+      const s = CAMPGROUND_BY_ID[campId]?.sites.find((x) => x.id === siteId);
+      return s ? { x: s.x, z: s.z, heading: s.heading, pedestal: s.pedestal ?? null } : null;
+    },
+    inSite: () => !!game.sim && !!inReservedSite(game.sim.s),
+    vehicleAt: (anchorId: string) => !!game.sim && vehicleAtAnchor(activeVehicle(game.sim.s), anchorId),
+    perf: () => (game.sim ? vehiclePerformance(game.sim.s, activeVehicle(game.sim.s).id) : null),
+    caps: () => (game.sim ? capacities(game.sim.s, activeVehicle(game.sim.s).id) : null),
+    doorOutside: () => {
+      const p = game.vehicleDoorOutside();
+      return { x: p.x, z: p.z };
+    },
+    driverDoor: () => {
+      const p = game.driverDoorOutside();
+      return { x: p.x, z: p.z };
+    },
+    /** Vehicle-local OBB test: is a world point inside the vehicle footprint? */
+    insideVehicle: (x: number, z: number, margin = 0) => {
+      const p = game.phys!;
+      const [lx, lz] = worldToLocal(x, z, p.x, p.z, p.heading);
+      return Math.abs(lx) < p.def.dims.width / 2 - margin && Math.abs(lz) < p.def.dims.length / 2 - margin;
+    },
+    /** Accept + load a delivery through the sim (precondition helper). */
+    setupLoadedJob: (jobId: string, comps: string[]) => {
+      const sim = game.sim!;
+      const board = 'dj_board';
+      if (!sim.s.jobs.active.some((j) => j.offer.id === jobId)) sim.accept(jobId, board);
+      const v = activeVehicle(sim.s);
+      const lot = { x: -893, z: 826 };
+      v.pose = { x: lot.x, z: lot.z, heading: Math.PI };
+      game.phys!.place(lot.x, lot.z, Math.PI);
+      const r = sim.loadCargo(jobId, comps);
+      for (const it of Object.values(sim.s.items)) if (it.cargo) it.secured = true;
+      return r.ok ? 'ok' : r.reason;
+    },
   };
   (window as unknown as { __rh: typeof api }).__rh = api;
 }

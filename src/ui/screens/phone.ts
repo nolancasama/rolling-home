@@ -223,10 +223,13 @@ function mapApp(g: Game, driving: boolean): Child {
       !plan.ok && plan.reason ? h('p', { class: 'small muted' }, `Assisted travel: ${plan.reason}`) : h('p', { class: 'small good' }, 'Assisted travel available: skips the drive but charges all its time, fuel and wear.'),
     );
   }
+  const places = PLACES.filter((p) => placeVisible(g, p) && p.kind !== 'poi');
   return h('div', null,
     h('div', { class: 'map-wrap' }, canvas),
     h('div', { class: 'legend' }, h('span', null, '● town'), h('span', null, '⛺ campground'), h('span', null, '⛽ truck stop'), h('span', null, '△ free camping'), h('span', null, '◆ viewpoint')),
     detail,
+    h('h3', null, 'Destinations'),
+    h('div', { class: 'row wrap' }, places.map((p) => btn(p.name, () => { ps.selPlace = p.id; g.ui.invalidate(); }, `small ${ps.selPlace === p.id ? 'teal' : 'ghost'}`, `map-place-${p.id}`))),
   );
 }
 
