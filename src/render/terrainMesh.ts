@@ -209,6 +209,8 @@ uniform float uTime;
 uniform vec3 uDeep;
 uniform vec3 uShallow;
 uniform vec3 uSky;
+uniform vec3 uZenith;
+uniform vec3 uLight;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 varying vec3 vWorld;
@@ -222,8 +224,11 @@ void main() {
     0.06 * cos(p.y * 0.27 + t * 0.9) + 0.04 * cos(p.x * 0.47 + t * 1.6) + 0.03 * cos((p.x - p.y) * 0.8 - t * 1.8)));
   vec3 v = normalize(cameraPosition - vWorld);
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-  vec3 col = mix(uDeep, uShallow, 0.35);
-  col = mix(col, uSky, clamp(fres * 0.85 + 0.12, 0.0, 1.0));
+  vec3 col = mix(uDeep, uShallow, 0.35) * uLight; // the body colour is unlit: dim it at night
+  // no real reflections: reflect a sky tone pulled toward the zenith and the dark forested shore,
+  // otherwise grazing views turn the lake into pale horizon haze
+  vec3 refl = mix(mix(uSky, uZenith, 0.45), vec3(0.06, 0.1, 0.08), 0.3);
+  col = mix(col, refl, clamp(fres * 0.75 + 0.1, 0.0, 0.8));
   vec3 h = normalize(uSunDir + v);
   col += uSunColor * pow(max(dot(n, h), 0.0), 220.0) * 1.6;
   gl_FragColor = vec4(col, 0.92);
@@ -240,6 +245,8 @@ export function buildLake(): { mesh: THREE.Mesh; uniforms: any } {
     uDeep: { value: new THREE.Color('#1f4a5e') },
     uShallow: { value: new THREE.Color('#3f8a8a') },
     uSky: { value: new THREE.Color('#9ec4e0') },
+    uZenith: { value: new THREE.Color('#4f8fd8') },
+    uLight: { value: new THREE.Color(1, 1, 1) },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) },
     uSunColor: { value: new THREE.Color('#ffffff') },
     ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),

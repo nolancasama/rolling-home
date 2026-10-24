@@ -47,6 +47,7 @@ interface Walker {
 }
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+const WHITE = new THREE.Color(1, 1, 1);
 
 export class WorldView {
   group = new THREE.Group();
@@ -190,6 +191,8 @@ export class WorldView {
     wu.uniforms.uSunDir.value.copy(this.sky.sunDir);
     wu.uniforms.uSunColor.value.copy(this.sky.sun.color).multiplyScalar(this.sky.daylight);
     wu.uniforms.uSky.value.copy(this.sky.uniforms.uHorizon.value);
+    wu.uniforms.uZenith.value.copy(this.sky.uniforms.uZenith.value);
+    wu.uniforms.uLight.value.setRGB(0.16, 0.2, 0.32).lerp(WHITE, this.sky.daylight);
     const night = this.sky.daylight < 0.25;
     this.props.lampMat.emissiveIntensity = night ? 2.4 : 0;
     this.props.lampPools.visible = night;
