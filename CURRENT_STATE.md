@@ -62,12 +62,13 @@ tests before building). Repo: https://github.com/nolancasama/rolling-home (publi
 Visual review pass done (screenshots of both vehicles on Route 89, the byway, Highway 60, Pine Lake, the
 campground, Mesa City, the truck stop and Red Rock Flats, by day and night). Fixed: Class C cockpit (cab now
 a step below the coach), open cab-over bunk, cab/coach opening, mirrors, headliner overhang, walking eye in
-cabs, night too dark (moonlit keys + lamp light pools), vegetation culled beyond the fog.
+cabs, night too dark (moonlit keys + lamp light pools), vegetation culled beyond the fog, lake at grazing
+angles and at night. UI review of all screens at 1366×768: cargo loading now opens on a valid suggestion,
+RV Status axle bars match the diagram order.
 
 ## Known Issues
 
-- Lake looks pale/white at grazing angles (seen from the campground loop).
-- Traffic cars are plain boxes when seen up close.
+- Traffic cars are plain low-poly boxes when seen up close (in keeping with the style; cosmetic).
 - Real Chromebook GPU performance not measured. Desktop Chromium, low preset, 1366×768: ~2 ms CPU per frame,
   9–12 ms with 4× CPU throttling (still 60 fps); worst view ~0.9 M triangles / ~210 draw calls (Pine Lake).
 - Bundle is ~1 MB (286 KB gzip); Vite warns about chunk size. Fine for now.
@@ -78,8 +79,8 @@ cabs, night too dark (moonlit keys + lamp light pools), vegetation culled beyond
 
 1. Try the live build on a real school Chromebook (low preset); if slow, reduce vegetation density/draw
    distance on low first.
-2. Lake shader at grazing angles; simple traffic car models.
-3. Town dressing where sparse (truck stop, Mesa City side streets).
+2. Town dressing where sparse (truck stop, Mesa City side streets); rounder traffic car models.
+3. A hands-on playtest of the first in-game day by a person (onboarding clarity, pacing, prices).
 4. Re-run `npm run acceptance` after gameplay changes (use `--only <section>` while iterating).
 
 ## Codex / Delegated Work

@@ -5,7 +5,7 @@ import { boardOffers, deliverCheck, dockLabel, loadCheck, offerRequirements, pre
 import { vehicleAtAnchor } from '../../sim/places';
 import { rankCompartments, canStoreIn } from '../../sim/storage';
 import type { DeliveryOffer } from '../../sim/types';
-import { activeVehicle, compartments, compartmentUse } from '../../sim/vehicle';
+import { activeVehicle, compartments, compartmentUse, type CompartmentInfo } from '../../sim/vehicle';
 import { newItem } from '../../sim/core';
 import type { Game } from '../../game/game';
 import { btn, h, type Child } from '../dom';
@@ -90,12 +90,27 @@ export function cargoScreen(g: Game, jobId: string) {
   const job = s0.jobs.active.find((j) => j.offer.id === jobId)!;
   const offer = job.offer as DeliveryOffer;
   const v = activeVehicle(s0);
-  // default: every crate to the top-ranked compartment (shows limits clearly)
-  const probe = newItem(s0, 'cargo', { kind: 'carried' }, { cargo: { ...offer.crates[0], jobId, damage: 0 } });
-  const first = rankCompartments(s0, v.id, probe)[0]?.id ?? 'floor';
-  delete s0.items[probe.uid];
-  s0.uidCounter--;
-  const assign: string[] = offer.crates.map(() => first);
+  // fridges only take keep-cold crates
+  const usable = (cp: CompartmentInfo, i: number) => !cp.refrigerated || !!offer.crates[i].refrigerated;
+  const assign: string[] = offer.crates.map(() => 'floor');
+  // greedy: each crate to the best-ranked compartment that still fits, counting crates already placed
+  const autoArrange = () => {
+    const st = g.sim!.s;
+    const counter = st.uidCounter;
+    const placed: string[] = [];
+    for (let i = 0; i < offer.crates.length; i++) {
+      const inst = newItem(st, 'cargo', { kind: 'carried' }, { cargo: { ...offer.crates[i], jobId, damage: 0 } });
+      const ranked = rankCompartments(st, v.id, inst).filter((cp) => usable(cp, i));
+      const ok = ranked.find((cp) => canStoreIn(st, v.id, cp, inst).ok);
+      assign[i] = ok?.id ?? ranked[0].id;
+      if (ok) inst.where = { kind: 'stored', vehicle: v.id, comp: ok.id };
+      placed.push(inst.uid);
+    }
+    for (const u of placed) delete st.items[u];
+    st.uidCounter = counter;
+  };
+  // open on a suggestion that fits (when one exists); the player can move any crate
+  autoArrange();
   const screen = modal(g.ui, 'cargo', {
     title: `Load: ${offer.title}`, sub: () => `${offer.crates.length} crates · ${kg(offer.crates.reduce((a, c) => a + c.mass, 0))} · choose where each crate rides`,
     body: () => {
@@ -105,33 +120,17 @@ export function cargoScreen(g: Game, jobId: string) {
       return h('div', { class: 'cols' },
         h('div', null,
           h('h3', null, 'Crates'),
+          h('div', { class: 'row', style: 'margin-bottom:8px' },
+            btn('Auto-arrange', () => { autoArrange(); g.ui.invalidate(); }, 'small secondary', 'cargo-auto'),
+            btn('Rearrange my belongings', () => g.screens.openPhone('inventory'), 'small ghost'),
+          ),
           h('div', { class: 'list' }, offer.crates.map((c, i) => h('div', { class: 'detail', testid: `crate-${i}` },
             h('div', { class: 'row' }, h('b', null, `${i + 1}. ${c.name}`), h('span', { class: 'spacer' }), h('span', { class: 'small' }, `${kg(c.mass)} · ${c.dims.join(' × ')} m`)),
             c.fragile ? h('span', { class: 'pill warn' }, 'fragile') : null, c.refrigerated ? h('span', { class: 'pill teal' }, 'keep cold') : null,
-            h('div', { class: 'row wrap', style: 'margin-top:5px' }, comps.map((cp) => btn(cp.name.replace(/ \(.*\)/, ''), () => { assign[i] = cp.id; g.ui.invalidate(); }, `small ${assign[i] === cp.id ? 'teal' : 'ghost'}`, `crate-${i}-${cp.id}`))),
+            h('div', { class: 'row wrap', style: 'margin-top:5px' }, comps.filter((cp) => usable(cp, i)).map((cp) => btn(cp.name.replace(/ \(.*\)/, ''), () => { assign[i] = cp.id; g.ui.invalidate(); }, `small ${assign[i] === cp.id ? 'teal' : 'ghost'}`, `crate-${i}-${cp.id}`))),
             pv.crateErrors[i] ? h('div', { class: 'callout bad small', style: 'margin-top:5px', testid: `crate-${i}-error` }, pv.crateErrors[i]) : null,
             !pv.crateErrors[i] && !comps.find((cp) => cp.id === assign[i])?.secure ? h('div', { class: 'small warn' }, 'Loose floor space: strap it down before driving (cargo straps).') : null,
           ))),
-          h('div', { class: 'row', style: 'margin-top:8px' },
-            btn('Auto-arrange', () => {
-              // greedy: try each crate in ranked compartments, accounting for crates already placed
-              const st = g.sim!.s;
-              const counter = st.uidCounter;
-              const placed: string[] = [];
-              for (let i = 0; i < offer.crates.length; i++) {
-                const inst = newItem(st, 'cargo', { kind: 'carried' }, { cargo: { ...offer.crates[i], jobId, damage: 0 } });
-                const ranked = rankCompartments(st, v.id, inst);
-                const ok = ranked.find((cp) => canStoreIn(st, v.id, cp, inst).ok);
-                assign[i] = ok?.id ?? ranked[0].id;
-                if (ok) inst.where = { kind: 'stored', vehicle: v.id, comp: ok.id };
-                placed.push(inst.uid);
-              }
-              for (const u of placed) delete st.items[u];
-              st.uidCounter = counter;
-              g.ui.invalidate();
-            }, 'small secondary', 'cargo-auto'),
-            btn('Rearrange my belongings', () => g.screens.openPhone('inventory'), 'small ghost'),
-          ),
         ),
         h('div', null,
           h('h3', null, 'With this cargo'),

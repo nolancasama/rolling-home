@@ -326,9 +326,10 @@ export function weightPanel(g: Game, compact = false): Child {
     h('div', { class: `bar tall ${cls(w.total, w.gvwr)}` }, h('div', { class: 'bar-fill', style: `width:${Math.min(100, fr(w.total, w.gvwr) * 100)}%` }), h('span', { class: 'bar-label' }, `${Math.round(fr(w.total, w.gvwr) * 100)}% of GVWR`)),
     h('div', { class: 'stat' }, h('span', { class: 'stat-label' }, 'Payload left'), h('span', { class: `stat-value ${w.payloadLeft < 0 ? 'neg' : ''}`, testid: 'payload-left' }, kg(w.payloadLeft))),
     h('div', { class: 'axles' }, svg),
+    // same left-to-right order as the diagram above (rear, then front)
     h('div', { class: 'grid2' },
-      h('div', null, h('div', { class: 'small' }, `Front axle ${kg(w.front)} / ${kg(def.frontGawr)}`), h('div', { class: `bar ${cls(w.front, def.frontGawr)}` }, h('div', { class: 'bar-fill', style: `width:${Math.min(100, fr(w.front, def.frontGawr) * 100)}%` }))),
-      h('div', null, h('div', { class: 'small' }, `Rear axle ${kg(w.rear)} / ${kg(def.rearGawr)}`), h('div', { class: `bar ${cls(w.rear, def.rearGawr)}` }, h('div', { class: 'bar-fill', style: `width:${Math.min(100, fr(w.rear, def.rearGawr) * 100)}%` })))),
+      h('div', null, h('div', { class: 'small' }, `Rear ${kg(w.rear)} / ${kg(def.rearGawr)}`), h('div', { class: `bar ${cls(w.rear, def.rearGawr)}` }, h('div', { class: 'bar-fill', style: `width:${Math.min(100, fr(w.rear, def.rearGawr) * 100)}%` }))),
+      h('div', null, h('div', { class: 'small' }, `Front ${kg(w.front)} / ${kg(def.frontGawr)}`), h('div', { class: `bar ${cls(w.front, def.frontGawr)}` }, h('div', { class: 'bar-fill', style: `width:${Math.min(100, fr(w.front, def.frontGawr) * 100)}%` })))),
     w.messages.length ? h('div', { class: 'callout bad', style: 'margin-top:8px' }, w.messages.join('. ') + '.') : null,
     compact ? null : [
       h('h3', null, 'Breakdown'),

@@ -117,7 +117,7 @@ export function compartments(s: GameState, vid: string): CompartmentInfo[] {
     const d = defOf(it);
     if (!d.storage || it.where.kind !== 'floor') continue;
     out.push({
-      id: `item:${it.uid}`, name: d.storage.refrigerated ? `${d.name}` : `${d.name} storage`,
+      id: `item:${it.uid}`, name: d.storage.refrigerated || /storage|cabinet|wardrobe|locker|drawer/i.test(d.name) ? d.name : `${d.name} storage`,
       liters: d.storage.liters, maxKg: d.storage.maxKg, d: dFromZ(def, it.where.z), secure: d.storage.secure,
       refrigerated: !!d.storage.refrigerated, exterior: false, maxDim: d.storage.maxDim ?? 0.6, high: false,
       hostUid: it.uid,

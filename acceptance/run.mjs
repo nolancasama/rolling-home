@@ -479,6 +479,8 @@ S.cargo = async (ctx) => {
     action: async () => {
       await tap(page, 'KeyE');
       await page.click('[data-testid=load-starter]');
+      // the screen opens on a suggestion that fits; overfill the rear garage on purpose
+      for (const i of [0, 1, 2]) await page.click(`[data-testid=crate-${i}-garage]`);
     },
     outcome: async () => {
       const warn = await visible(page, 'cargo-warning');

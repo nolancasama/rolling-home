@@ -108,6 +108,10 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
 - **Night is a readable, stylized moonlit blue**, not physically dark: moon key light 0.4 and sky fill 0.85
   (previously ~1/45 of daylight, too dark to drive). Street lamps get additive ground light pools instead of
   real point lights. *Rejected:* dozens of real lamp lights (too costly on Chromebook-class GPUs).
+- **Cargo loading opens on a suggestion that fits** (the Auto-arrange result; the button sits at the top of the
+  crate list). Fridges are offered only for keep-cold crates. *Why:* the old default put every crate in the
+  top-ranked compartment, so the very first delivery opened all red with the fix scrolled out of view at
+  1366×768. Limits stay visible: the panel shows the resulting weights and any crate can be moved.
 - **Distance culling:** instanced vegetation/rock tiles entirely beyond the fog are hidden each frame (no visual
   change). Terrain chunks are not culled or LOD'd: fully fogged distant terrain forms the hazy skyline
   silhouettes, and chunk LOD would open seam cracks against the sky.

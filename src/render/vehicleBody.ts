@@ -594,9 +594,11 @@ export function buildInterior(def: VehicleDef): InteriorParts {
   // cab-over bunk (Class C), open to the coach, its platform resting on the cab roof
   const bulkG = new THREE.Group();
   if (inr.cabover) {
-    const bz1 = 2.68, my = 2.28, py = cabTop + 0.005;
+    // platform on the cab-over floor line (y 2.2) and short of the nose, so it stays inside the skin
+    const bz1 = 2.5, my = 2.28, py = 2.205;
     const bunk = new GeoBuilder();
     bunk.box(0, (py + my) / 2, (zEnd + bz1) / 2, hw * 2 - 0.02, my - py, bz1 - zEnd, '#8a6a4a');
+    bunk.box(0, (cabTop + my) / 2, zEnd + 0.012, hw * 2 - 0.02, my - cabTop, 0.02, '#8a6a4a'); // fascia over the cab opening
     bunk.box(0, my + 0.07, (zEnd + bz1) / 2 + 0.05, hw * 2 - 0.2, 0.14, bz1 - zEnd - 0.2, '#e6dccb');
     bunk.box(0, my + 0.145, (zEnd + bz1) / 2 - 0.15, hw * 2 - 0.22, 0.02, bz1 - zEnd - 0.6, '#5a7a9a');
     for (const px of [-0.55, 0.55]) bunk.box(px, my + 0.19, bz1 - 0.3, 0.45, 0.1, 0.28, '#f0ece4');
