@@ -13,7 +13,7 @@ import { buildBuildings } from '../render/buildings';
 import { CharacterModel } from '../render/character';
 import { buildItemModel } from '../render/furniture';
 import { genericCamper, NPC_VEHICLE_SIZE, semiTruck, vanlifeVan, vintageMotorhome } from '../render/npcVehicles';
-import { buildProps, type PropsView } from '../render/props';
+import { buildProps, cullProps, type PropsView } from '../render/props';
 import { buildRoads } from '../render/roadMesh';
 import { Sky } from '../render/sky';
 import { buildTerrain, type TerrainView } from '../render/terrainMesh';
@@ -184,6 +184,7 @@ export class WorldView {
     this.time += dt;
     const hour = hourOf(minutes);
     this.sky.update(hour, focus, this.time);
+    cullProps(this.props, focus.x, focus.z, this.sky.fog.far + 60);
     const wu = this.terrain.water.material as THREE.ShaderMaterial;
     wu.uniforms.uTime.value = this.time;
     wu.uniforms.uSunDir.value.copy(this.sky.sunDir);
@@ -191,6 +192,7 @@ export class WorldView {
     wu.uniforms.uSky.value.copy(this.sky.uniforms.uHorizon.value);
     const night = this.sky.daylight < 0.25;
     this.props.lampMat.emissiveIntensity = night ? 2.4 : 0;
+    this.props.lampPools.visible = night;
     const wd = weekdayOf(minutes);
     this.props.market.visible = wd === 5 && hour >= 7.5 && hour < 14.5;
     this.props.campfire.visible = wd === 4 && hour >= 19 && hour < 23.5;

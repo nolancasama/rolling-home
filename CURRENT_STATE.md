@@ -36,7 +36,8 @@ tests before building). Repo: https://github.com/nolancasama/rolling-home (publi
   pads, buildings with signs, instanced vegetation/rocks, town props, sky with day/night, traffic,
   pedestrians, campers at occupied sites, NPC camps, markers.
 - Procedural van and Class C (exteriors with real window openings, interiors, wheels, doors, awning, solar,
-  rust/dirt), furniture models, character with animation.
+  rust/dirt; Class C cab a step below the coach with an open cab-over bunk), furniture models, character with
+  animation.
 - Modes: explore (3rd person), interior (1st person), drive (arcade physics with an engine torque plateau,
   chase/cockpit), furnish (overhead cutaway editor with live validation and weight panel).
 - UI: main menu (Red Rock Flats backdrop), new game (appearance, vehicle, difficulty), HUD, phone (map/GPS +
@@ -58,23 +59,27 @@ tests before building). Repo: https://github.com/nolancasama/rolling-home (publi
 
 ## Current Work
 
-Polish after the acceptance pass: visual review of the routes, Class C, Pine Lake, Mesa City and campgrounds.
+Visual review pass done (screenshots of both vehicles on Route 89, the byway, Highway 60, Pine Lake, the
+campground, Mesa City, the truck stop and Red Rock Flats, by day and night). Fixed: Class C cockpit (cab now
+a step below the coach), open cab-over bunk, cab/coach opening, mirrors, headliner overhang, walking eye in
+cabs, night too dark (moonlit keys + lamp light pools), vegetation culled beyond the fog.
 
 ## Known Issues
 
-- Long drives (Dusty Junction → Pine Lake), the narrow forest track and the Class C have been driven by the
-  harness but not visually reviewed in the browser yet.
+- Lake looks pale/white at grazing angles (seen from the campground loop).
+- Traffic cars are plain boxes when seen up close.
+- Real Chromebook GPU performance not measured. Desktop Chromium, low preset, 1366×768: ~2 ms CPU per frame,
+  9–12 ms with 4× CPU throttling (still 60 fps); worst view ~0.9 M triangles / ~210 draw calls (Pine Lake).
 - Bundle is ~1 MB (286 KB gzip); Vite warns about chunk size. Fine for now.
 - Graphics quality changes apply only after reload.
 - Pedestrians/NPCs are simple; no walkable shop interiors (by design for the MVP).
-- Performance on the "low" preset at 1366×768 (school Chromebook class) has not been measured.
 
 ## Next Steps
 
-1. Drive the routes in the browser (van and Class C); fix physics/visual issues found on mountain roads,
-   campgrounds and the narrow track.
-2. Review Pine Lake, Mesa City, the truck stop and campgrounds visually; add town dressing where sparse.
-3. Performance check at 1366×768 on the "low" preset.
+1. Try the live build on a real school Chromebook (low preset); if slow, reduce vegetation density/draw
+   distance on low first.
+2. Lake shader at grazing angles; simple traffic car models.
+3. Town dressing where sparse (truck stop, Mesa City side streets).
 4. Re-run `npm run acceptance` after gameplay changes (use `--only <section>` while iterating).
 
 ## Codex / Delegated Work

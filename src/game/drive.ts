@@ -26,7 +26,7 @@ export class DriveMode implements Mode {
   parkDist: number | null = null;
   ready = false;
   /** Automation: overrides keyboard input when set. */
-  auto: { throttle: number; brake: number; steer: number } | null = null;
+  auto: { throttle: number; brake: number; steer: number; handbrake?: boolean } | null = null;
 
   constructor(private g: Game) {}
 
@@ -124,8 +124,9 @@ export class DriveMode implements Mode {
     }
     if (g.settings.steeringAssist && p.perf) steer -= p.perf.drift * 2.5;
     p.fuelEmpty = v.fuel <= 0.05;
-    this.braking = (brake > 0 && !p.reverse) || (p.reverse && throttle > 0) || inp.isDown('Space');
-    p.step(dt, { throttle, brake, steer, handbrake: !blocked && inp.isDown('Space') }, g.world.collision, (c) => c.tag === 'player-vehicle');
+    const handbrake = (!blocked && inp.isDown('Space')) || !!this.auto?.handbrake;
+    this.braking = (brake > 0 && !p.reverse) || (p.reverse && throttle > 0) || handbrake;
+    p.step(dt, { throttle, brake, steer, handbrake }, g.world.collision, (c) => c.tag === 'player-vehicle');
     // impacts
     if (p.impact > 1.5) {
       applyImpact(s, v, p.impact);
@@ -240,9 +241,10 @@ export class DriveMode implements Mode {
     if (this.cam === 'cockpit') {
       vv.body.updateMatrixWorld(true);
       const inr = p.def.interior;
-      const eye = new THREE.Vector3(inr.driverSeat.x, inr.floorY + 1.22 + (p.def.id === 'classc' ? 0.05 : 0), inr.driverSeat.z - 0.08).applyMatrix4(vv.body.matrixWorld);
-      const lookL = new THREE.Vector3(inr.driverSeat.x, inr.floorY + 1.1, inr.driverSeat.z + 10).applyMatrix4(vv.body.matrixWorld);
-      const look = g.input.isDown('Q') ? new THREE.Vector3(inr.driverSeat.x + 10, inr.floorY + 1.1, inr.driverSeat.z).applyMatrix4(vv.body.matrixWorld) : g.input.isDown('X') ? new THREE.Vector3(inr.driverSeat.x - 10, inr.floorY + 1.1, inr.driverSeat.z).applyMatrix4(vv.body.matrixWorld) : lookL;
+      const fy = inr.cabFloorY;
+      const eye = new THREE.Vector3(inr.driverSeat.x, fy + 1.22, inr.driverSeat.z - 0.08).applyMatrix4(vv.body.matrixWorld);
+      const lookL = new THREE.Vector3(inr.driverSeat.x, fy + 1.1, inr.driverSeat.z + 10).applyMatrix4(vv.body.matrixWorld);
+      const look = g.input.isDown('Q') ? new THREE.Vector3(inr.driverSeat.x + 10, fy + 1.1, inr.driverSeat.z).applyMatrix4(vv.body.matrixWorld) : g.input.isDown('X') ? new THREE.Vector3(inr.driverSeat.x - 10, fy + 1.1, inr.driverSeat.z).applyMatrix4(vv.body.matrixWorld) : lookL;
       g.camera.position.copy(eye);
       g.camera.lookAt(look);
       g.camera.near = 0.05;

@@ -9,7 +9,7 @@ import { EDGES, nearestRoad, routeTo } from '../world/roads';
 import { isOpenGround, plateauMask, roadProfile, terrainHeight } from '../world/terrain';
 import type { CollisionWorld } from '../game/collision';
 import { GeoBuilder, MAT, shade } from './builder';
-import { signAtlas } from './textures';
+import { glowTexture, signAtlas } from './textures';
 
 // Instanced vegetation and rocks plus merged town/camp furniture.
 
@@ -17,8 +17,11 @@ export interface PropsView {
   group: THREE.Group;
   lampHeads: THREE.InstancedMesh;
   lampMat: THREE.MeshStandardMaterial;
+  lampPools: THREE.InstancedMesh;
   market: THREE.Group;
   campfire: THREE.Group;
+  /** Instanced vegetation and rock tiles (distance-culled each frame). */
+  tiles: THREE.InstancedMesh[];
 }
 
 function pineGeo(): THREE.BufferGeometry {
@@ -106,7 +109,15 @@ interface Inst {
   color: THREE.Color;
 }
 
-function instanced(geo: THREE.BufferGeometry, list: Inst[], mat: THREE.Material, shadows: boolean, tile = 450): THREE.Object3D {
+/** Hide instanced vegetation/rock tiles that lie entirely beyond `maxDist` (past the fog they render as fog). */
+export function cullProps(p: PropsView, x: number, z: number, maxDist: number) {
+  for (const m of p.tiles) {
+    const s = m.boundingSphere!;
+    m.visible = Math.hypot(s.center.x - x, s.center.z - z) - s.radius < maxDist;
+  }
+}
+
+function instanced(geo: THREE.BufferGeometry, list: Inst[], mat: THREE.Material, shadows: boolean, tile = 450): THREE.Group {
   const group = new THREE.Group();
   const buckets = new Map<string, Inst[]>();
   for (const it of list) {
@@ -228,25 +239,32 @@ export function buildProps(collision: CollisionWorld, density: number): PropsVie
     }
   }
   const lam = new THREE.MeshLambertMaterial({ vertexColors: true });
-  group.add(instanced(pineGeo(), pines, lam, true));
-  group.add(instanced(aspenGeo(), aspens, lam, true));
-  group.add(instanced(saguaroGeo(), saguaros, lam, true));
-  group.add(instanced(joshuaGeo(), joshuas, lam, true));
-  group.add(instanced(shrubGeo(), shrubs, lam, false));
-  group.add(instanced(rockGeo(3), rocks, lam, false));
-  group.add(instanced(rockGeo(7), rocks2, lam, true));
-  group.add(instanced(hoodooGeo(), hoodoos, lam, true));
+  const tiles: THREE.InstancedMesh[] = [];
+  for (const sp of [
+    instanced(pineGeo(), pines, lam, true),
+    instanced(aspenGeo(), aspens, lam, true),
+    instanced(saguaroGeo(), saguaros, lam, true),
+    instanced(joshuaGeo(), joshuas, lam, true),
+    instanced(shrubGeo(), shrubs, lam, false),
+    instanced(rockGeo(3), rocks, lam, false),
+    instanced(rockGeo(7), rocks2, lam, true),
+    instanced(hoodooGeo(), hoodoos, lam, true),
+  ]) {
+    group.add(sp);
+    for (const m of sp.children) tiles.push(m as THREE.InstancedMesh);
+  }
 
   const town = buildTownProps(collision);
   group.add(town.mesh);
   group.add(town.lamps);
+  group.add(town.pools);
   group.add(town.signs);
   group.add(town.wires);
   const market = buildMarket(collision);
   group.add(market);
   const campfire = buildCampfire();
   group.add(campfire);
-  return { group, lampHeads: town.lamps, lampMat: town.lampMat, market, campfire };
+  return { group, lampHeads: town.lamps, lampMat: town.lampMat, lampPools: town.pools, market, campfire, tiles };
 }
 
 // ───────────── town & camp furniture ─────────────
@@ -545,10 +563,28 @@ function buildTownProps(c: CollisionWorld) {
   lamps.count = heads.length;
   lamps.instanceMatrix.needsUpdate = true;
   lamps.computeBoundingSphere();
+  // night light pools under the lamps: additive ground decals instead of real lights
+  const poolMat = new THREE.MeshBasicMaterial({
+    map: glowTexture(), color: 0xffc070, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  });
+  const poolGeo = new THREE.PlaneGeometry(1, 1);
+  poolGeo.rotateX(-Math.PI / 2);
+  const pools = new THREE.InstancedMesh(poolGeo, poolMat, Math.max(1, heads.length));
+  const hp = new THREE.Vector3(), q0 = new THREE.Quaternion(), ps = new THREE.Vector3(18, 1, 18);
+  heads.forEach((m, i) => {
+    hp.setFromMatrixPosition(m);
+    hp.y = terrainHeight(hp.x, hp.z) + 0.12;
+    pools.setMatrixAt(i, new THREE.Matrix4().compose(hp, q0, ps));
+  });
+  pools.count = heads.length;
+  pools.instanceMatrix.needsUpdate = true;
+  pools.computeBoundingSphere();
+  pools.renderOrder = 1;
+  pools.visible = false;
   const wireGeo = new THREE.BufferGeometry();
   wireGeo.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
   const wires = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x2a2a2a }));
-  return { mesh, lamps, lampMat, signs: buildRoadSigns(c), wires };
+  return { mesh, lamps, lampMat, pools, signs: buildRoadSigns(c), wires };
 }
 
 // ───────────── road signs with real distances ─────────────

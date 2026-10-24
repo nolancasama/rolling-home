@@ -62,7 +62,8 @@ export function installTestApi(game: Game) {
     game.drive.auto = { throttle, brake, steer: Math.max(-1, Math.min(1, err * 2.2)) };
     if (remaining < pilot.stopAt || performance.now() - pilot.started > pilot.maxMs) {
       const endSpeed = p.speed;
-      game.drive.auto = { throttle: 0, brake: 1, steer: 0 };
+      // stop on the handbrake: holding S at a standstill would engage reverse
+      game.drive.auto = { throttle: 0, brake: 0, steer: 0, handbrake: true };
       const ok = remaining < pilot.stopAt;
       const res = pilot.resolve;
       pilot = null;
@@ -205,6 +206,7 @@ export function installTestApi(game: Game) {
       });
     },
     placeNode: (id: string) => PLACES.find((p) => p.id === id)?.node,
+    edgeLength: (edgeId: string) => EDGE_BY_ID[edgeId]?.length ?? 0,
     /** Pose on a road edge (right lane), heading along the edge. */
     roadPose: (edgeId: string, along: number) => {
       const e = EDGE_BY_ID[edgeId];

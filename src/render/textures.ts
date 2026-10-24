@@ -122,6 +122,19 @@ export function fabric(color: string, stripe: string): THREE.CanvasTexture {
   return tex(c, true);
 }
 
+/** Soft radial falloff (white, alpha fades to the edge) for additive light pools. */
+export function glowTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(128, 128);
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(0.7, 'rgba(255,255,255,0.15)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return tex(c);
+}
+
 export function gaugeFace(): THREE.CanvasTexture {
   const [c, g] = canvas(256, 128);
   g.fillStyle = '#16181c';

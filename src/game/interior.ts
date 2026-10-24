@@ -165,8 +165,12 @@ export class InteriorMode implements Mode {
     const vv = g.vv!;
     vv.body.updateMatrixWorld(true);
     const inr = g.phys!.def.interior;
-    const eyeH = Math.min(EYE, inr.ceilingY - inr.floorY - 0.12);
-    const eye = new THREE.Vector3(this.lx, inr.floorY + eyeH, this.lz).applyMatrix4(vv.body.matrixWorld);
+    // step down and crouch under the lower cab headliner (and its mirror) when walking forward between the seats
+    const cabK = clamp((this.lz - (inr.living.z1 - 0.3)) / 0.35, 0, 1);
+    const floorY = inr.floorY + (inr.cabFloorY - inr.floorY) * cabK;
+    const ceilY = inr.ceilingY + (inr.cabCeilingY - inr.ceilingY) * cabK;
+    const eyeH = Math.min(EYE, ceilY - floorY - 0.12 - 0.23 * cabK);
+    const eye = new THREE.Vector3(this.lx, floorY + eyeH, this.lz).applyMatrix4(vv.body.matrixWorld);
     const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
     const q = new THREE.Quaternion().setFromRotationMatrix(vv.body.matrixWorld);
     dir.applyQuaternion(q);

@@ -66,6 +66,8 @@ const VAN: VehicleDef = {
   interior: {
     floorY: 0.55,
     ceilingY: 2.42,
+    cabFloorY: 0.55,
+    cabCeilingY: 1.98,
     halfWidth: 0.94,
     living: { x0: -0.94, x1: 0.94, z0: -2.74, z1: 0.72 },
     cab: { x0: -0.94, x1: 0.94, z0: 0.72, z1: 1.75 },
@@ -172,6 +174,8 @@ const CLASS_C: VehicleDef = {
   interior: {
     floorY: 0.85,
     ceilingY: 2.85,
+    cabFloorY: 0.6,
+    cabCeilingY: 2.12,
     halfWidth: 1.14,
     living: { x0: -1.14, x1: 1.14, z0: -3.64, z1: 1.45 },
     cab: { x0: -1.14, x1: 1.14, z0: 1.45, z1: 2.55 },

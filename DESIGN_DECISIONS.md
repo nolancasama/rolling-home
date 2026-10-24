@@ -100,6 +100,18 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
   at ~$2-3k; real players who explore and upgrade land near the $1,500 goal. RV condition drifts to ~50% by
   day 30, so the goal's condition check makes at least one repair worthwhile.
 
+- **Class C cab sits a step below the coach** (`cabFloorY` 0.6 m vs coach floor 0.85 m, cab headliner 2.12 m),
+  as on real cutaway-chassis motorhomes. *Why:* with one shared floor the seats sat so high that the cockpit
+  eye point was level with the headliner and half the windshield was blocked. The cab-over bunk is open to
+  the coach (platform on the cab roof, mattress, side windows) instead of a solid bulkhead; the van keeps its
+  bulkhead. Walking forward into either cab steps down and crouches under the headliner and mirror.
+- **Night is a readable, stylized moonlit blue**, not physically dark: moon key light 0.4 and sky fill 0.85
+  (previously ~1/45 of daylight, too dark to drive). Street lamps get additive ground light pools instead of
+  real point lights. *Rejected:* dozens of real lamp lights (too costly on Chromebook-class GPUs).
+- **Distance culling:** instanced vegetation/rock tiles entirely beyond the fog are hidden each frame (no visual
+  change). Terrain chunks are not culled or LOD'd: fully fogged distant terrain forms the hazy skyline
+  silhouettes, and chunk LOD would open seam cracks against the sky.
+
 ### Architecture
 - `src/data` (content), `src/sim` (rules + state) and `src/world` (terrain/road/collider model) are pure TS:
   no DOM, no three.js, no `Math.random`, no `Date.now`. The renderer, controllers and UI read state and call

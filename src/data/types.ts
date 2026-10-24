@@ -149,6 +149,10 @@ export interface WindowDef {
 export interface InteriorDef {
   floorY: number;
   ceilingY: number;
+  /** The chassis cab can sit lower than the coach floor (Class C: a step down into the cab). */
+  cabFloorY: number;
+  /** Cab headliner height. */
+  cabCeilingY: number;
   halfWidth: number;
   living: Rect;
   cab: Rect;

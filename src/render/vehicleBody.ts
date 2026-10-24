@@ -248,8 +248,9 @@ function buildVan(def: VehicleDef): BodyParts {
   t.box(0, 1.0, L / 2 + 0.005, 1.1, 0.16, 0.04, '#2a2a2a'); // grille
   for (let k = 0; k < 3; k++) t.box(0, 0.94 + k * 0.05, L / 2 + 0.03, 1.0, 0.015, 0.02, '#8a8a8a');
   for (const sx of [-1, 1]) {
-    t.box(sx * (hw - 0.05), 2.0, 1.7, 0.28, 0.2, 0.06, '#2a2a2a', 0); // mirror arm
-    t.box(sx * (hw + 0.17), 1.95, 1.65, 0.06, 0.26, 0.18, '#2a2a2a');
+    t.box(sx * (hw + 0.04), 1.95, 1.65, 0.1, 0.05, 0.05, '#2a2a2a', 0); // mirror arm
+    t.box(sx * (hw + 0.17), 1.95, 1.65, 0.18, 0.26, 0.06, '#2a2a2a');
+    t.box(sx * (hw + 0.17), 1.95, 1.65 - 0.032, 0.15, 0.22, 0.006, '#aab8c6'); // mirror glass
     t.box(sx * (hw + 0.01), 1.3, 1.45, 0.02, 0.04, 0.18, '#8a8a8a'); // handle
     t.box(sx * (hw + 0.004), 0.95, -0.2, 0.01, 0.12, L - 0.4, '#2a2a2a'); // rub strip
   }
@@ -349,7 +350,10 @@ function buildClassC(def: VehicleDef): BodyParts {
   g.add(sidePanel(coach, leftHoles, 1, hw, paint));
   g.add(sidePanel(coach, rightHoles, -1, hw, paint));
   const rb = new GeoBuilder();
-  rim(rb, coach, hw, (i) => i === rearIdx, '#ffffff');
+  // the coach is open to the cab: no rim across its front edge, only the shoulders beside the narrower cab
+  const frontIdx = coach.findIndex((p) => p[0] === 1.52 && p[1] === yb);
+  rim(rb, coach, hw, (i) => i === rearIdx || i === frontIdx, '#ffffff');
+  for (const sx of [-1, 1]) rb.box(sx * (cabHw + hw) / 2, (yb + 2.2) / 2, 1.52, hw - cabHw, 2.2 - yb, 0.02, '#ffffff');
   const rimMesh = new THREE.Mesh(rb.build(), paint);
   rimMesh.castShadow = true;
   g.add(rimMesh);
@@ -400,8 +404,9 @@ function buildClassC(def: VehicleDef): BodyParts {
   t.box(0, 1.12, L / 2 + 0.005, 1.2, 0.22, 0.04, '#2a2a2a');
   t.box(0, 0.62, -L / 2 - 0.05, W, 0.2, 0.14, '#3a3a3a');
   for (const sx of [-1, 1]) {
-    t.box(sx * (cabHw + 0.2), 1.9, 2.55, 0.06, 0.34, 0.22, '#2a2a2a');
-    t.box(sx * (cabHw + 0.08), 1.95, 2.55, 0.2, 0.05, 0.05, '#2a2a2a');
+    t.box(sx * (cabHw + 0.2), 1.9, 2.55, 0.22, 0.34, 0.07, '#2a2a2a');
+    t.box(sx * (cabHw + 0.2), 1.9, 2.55 - 0.037, 0.19, 0.3, 0.006, '#aab8c6'); // mirror glass
+    t.box(sx * (cabHw + 0.05), 1.95, 2.55, 0.1, 0.05, 0.05, '#2a2a2a');
     t.box(sx * (cabHw + 0.01), 1.32, 2.25, 0.02, 0.04, 0.18, '#8a8a8a');
     // exterior compartment doors
     for (const [z0, z1] of [[-3.2, -2.6], [-1.0, -0.2], [0.1, 0.45]]) {
@@ -441,7 +446,7 @@ function buildClassC(def: VehicleDef): BodyParts {
   g.add(new THREE.Mesh(st2.build(), new THREE.MeshStandardMaterial({ color: def.paint.stripe, roughness: 0.5, side: THREE.DoubleSide })));
   // lights
   const hl = new GeoBuilder();
-  for (const sx of [-0.72, 0.72]) hl.box(sx, 1.15, L / 2 - 0.02, 0.32, 0.18, 0.06, '#ffffff');
+  for (const sx of [-0.72, 0.72]) hl.box(sx, 1.11, L / 2 - 0.02, 0.32, 0.16, 0.06, '#ffffff'); // below the hood line seen from the seat
   g.add(new THREE.Mesh(hl.build(), headlightMat));
   const tl = new GeoBuilder();
   for (const sx of [-1.08, 1.08]) tl.box(sx, 1.2, -L / 2 - 0.01, 0.14, 0.4, 0.04, '#ffffff');
@@ -518,17 +523,30 @@ export function buildInterior(def: VehicleDef): InteriorParts {
   const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 });
   const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf6f0e4, roughness: 0.95 });
   const upper: THREE.Object3D[] = [];
-  // floor
-  const fl = new THREE.PlaneGeometry(hw * 2, zCab - zBack);
-  fl.rotateX(-Math.PI / 2);
-  fl.translate(0, y0, (zBack + zCab) / 2);
-  const uv = fl.getAttribute('uv') as THREE.BufferAttribute;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * hw * 2 * 0.7, uv.getY(i) * (zCab - zBack) * 0.7);
-  const floor = new THREE.Mesh(fl, floorMat);
-  floor.receiveShadow = true;
-  g.add(floor);
-  // side walls with window holes (living area only)
   const zEnd = inr.living.z1;
+  // the Class C chassis cab is narrower than the coach and sits a step lower
+  const cabHalf = def.id === 'van' ? hw : 1.0;
+  const cy0 = inr.cabFloorY;
+  const stepDown = cy0 < y0 - 0.01;
+  // floor
+  const floorPlane = (za: number, zb: number, y: number, half: number, mat: THREE.Material) => {
+    const fl = new THREE.PlaneGeometry(half * 2, zb - za);
+    fl.rotateX(-Math.PI / 2);
+    fl.translate(0, y, (za + zb) / 2);
+    const uv = fl.getAttribute('uv') as THREE.BufferAttribute;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * half * 2 * 0.7, uv.getY(i) * (zb - za) * 0.7);
+    const m = new THREE.Mesh(fl, mat);
+    m.receiveShadow = true;
+    g.add(m);
+  };
+  floorPlane(zBack, stepDown ? zEnd : zCab, y0, hw, floorMat);
+  if (stepDown) {
+    floorPlane(zEnd, zCab, cy0, cabHalf, new THREE.MeshStandardMaterial({ color: 0x3a3a3e, roughness: 0.95 }));
+    const riser = new THREE.PlaneGeometry(cabHalf * 2, y0 - cy0);
+    riser.translate(0, (y0 + cy0) / 2, zEnd);
+    g.add(new THREE.Mesh(riser, new THREE.MeshStandardMaterial({ color: 0x9a6e46, roughness: 0.8 })));
+  }
+  // side walls with window holes (living area only)
   const wall = (side: 1 | -1) => {
     const sideName = side === 1 ? 'left' : 'right';
     // rotateY(-90°) maps shape u → +z (left wall, facing -X); rotateY(+90°) maps u → -z (right wall, facing +X)
@@ -564,19 +582,49 @@ export function buildInterior(def: VehicleDef): InteriorParts {
   cg.translate(0, y1, (zBack + zEnd) / 2);
   const ceil = new THREE.Mesh(cg, ceilMat);
   g.add(ceil);
-  // cab ceiling / headliner
-  const cabTop = def.id === 'van' ? 1.98 : 2.12;
-  const chg = new THREE.PlaneGeometry(hw * 2, zCab - zEnd + 0.5);
+  // cab ceiling / headliner, from the bulkhead to the top edge of the windshield
+  const cabTop = inr.cabCeilingY;
+  const wsTopZ = def.id === 'van' ? 1.28 : 2.42;
+  const chg = new THREE.PlaneGeometry(cabHalf * 2, wsTopZ - zEnd);
   chg.rotateX(Math.PI / 2);
-  chg.translate(0, cabTop, (zEnd + zCab) / 2 + 0.25);
+  chg.translate(0, cabTop, (zEnd + wsTopZ) / 2);
   const cabCeil = new THREE.Mesh(chg, new THREE.MeshStandardMaterial({ color: 0xd8cfbe, roughness: 0.95 }));
   g.add(cabCeil);
-  // bulkhead between the high living ceiling and the lower cab ceiling
+  // between the high living ceiling and the lower cab ceiling: a solid bulkhead (van), or the
+  // cab-over bunk (Class C), open to the coach, its platform resting on the cab roof
   const bulkG = new THREE.Group();
-  const bulkMesh = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, y1 - cabTop), wallMat);
-  bulkMesh.position.set(0, (y1 + cabTop) / 2, zEnd);
-  bulkMesh.rotation.y = Math.PI;
-  bulkG.add(bulkMesh);
+  if (inr.cabover) {
+    const bz1 = 2.68, my = 2.28, py = cabTop + 0.005;
+    const bunk = new GeoBuilder();
+    bunk.box(0, (py + my) / 2, (zEnd + bz1) / 2, hw * 2 - 0.02, my - py, bz1 - zEnd, '#8a6a4a');
+    bunk.box(0, my + 0.07, (zEnd + bz1) / 2 + 0.05, hw * 2 - 0.2, 0.14, bz1 - zEnd - 0.2, '#e6dccb');
+    bunk.box(0, my + 0.145, (zEnd + bz1) / 2 - 0.15, hw * 2 - 0.22, 0.02, bz1 - zEnd - 0.6, '#5a7a9a');
+    for (const px of [-0.55, 0.55]) bunk.box(px, my + 0.19, bz1 - 0.3, 0.45, 0.1, 0.28, '#f0ece4');
+    bulkG.add(new THREE.Mesh(bunk.build(), MAT.vc));
+    // bunk side walls (with the cab-over windows), ceiling and front
+    for (const side of [1, -1] as const) {
+      const u = (z: number) => (side === 1 ? z : -z);
+      const sh = new THREE.Shape([[zEnd, my], [bz1, my], [bz1, y1], [zEnd, y1]].map(([z, y]) => new THREE.Vector2(u(z), y)));
+      sh.holes.push(new THREE.Path(rectHole(1.95, 2.45, 2.48, y1 - 0.02).map(([z, y]) => new THREE.Vector2(u(z), y))));
+      const geo = new THREE.ShapeGeometry(sh, 2);
+      geo.rotateY(side === 1 ? -Math.PI / 2 : Math.PI / 2);
+      geo.translate(side * hw, 0, 0);
+      bulkG.add(new THREE.Mesh(geo, wallMat));
+    }
+    const bc = new THREE.PlaneGeometry(hw * 2, bz1 - zEnd);
+    bc.rotateX(Math.PI / 2);
+    bc.translate(0, y1, (zEnd + bz1) / 2);
+    bulkG.add(new THREE.Mesh(bc, ceilMat));
+    const bf = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, y1 - my), wallMat);
+    bf.position.set(0, (y1 + my) / 2, bz1);
+    bf.rotation.y = Math.PI;
+    bulkG.add(bf);
+  } else {
+    const bulkMesh = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, y1 - cabTop), wallMat);
+    bulkMesh.position.set(0, (y1 + cabTop) / 2, zEnd);
+    bulkMesh.rotation.y = Math.PI;
+    bulkG.add(bulkMesh);
+  }
   g.add(bulkG);
   upper.push(ceil, cabCeil, bulkG);
   // window frames, curtains, trim, lights
@@ -622,21 +670,30 @@ export function buildInterior(def: VehicleDef): InteriorParts {
   const cab = new GeoBuilder();
   const seatCol = '#4a4a50';
   for (const p of [inr.driverSeat, inr.passengerSeat]) {
-    cab.boxOn(p.x, y0, p.z, 0.5, 0.42, 0.5, '#2a2a2e');
-    cab.boxOn(p.x, y0 + 0.42, p.z, 0.52, 0.12, 0.52, seatCol);
-    cab.box(p.x, y0 + 0.9, p.z - 0.24, 0.52, 0.72, 0.12, seatCol, 0, -0.12);
-    cab.box(p.x, y0 + 1.32, p.z - 0.28, 0.3, 0.16, 0.1, seatCol);
+    cab.boxOn(p.x, cy0, p.z, 0.5, 0.42, 0.5, '#2a2a2e');
+    cab.boxOn(p.x, cy0 + 0.42, p.z, 0.52, 0.12, 0.52, seatCol);
+    cab.box(p.x, cy0 + 0.9, p.z - 0.24, 0.52, 0.72, 0.12, seatCol, 0, -0.12);
+    cab.box(p.x, cy0 + 1.32, p.z - 0.28, 0.3, 0.16, 0.1, seatCol);
   }
   const dashZ = def.id === 'van' ? 1.78 : 2.6;
   const dashY = def.id === 'van' ? 1.05 : 1.25;
-  cab.box(0, y0 + 0.35, dashZ + 0.1, hw * 2, 0.7, 0.35, '#2e2e32');
-  cab.box(0, dashY + 0.1, dashZ, hw * 2 - 0.05, 0.12, 0.5, '#3a3a40', 0, -0.25);
+  cab.box(0, cy0 + 0.35, dashZ + 0.1, cabHalf * 2, 0.7, 0.35, '#2e2e32');
+  cab.box(0, dashY + 0.1, dashZ, cabHalf * 2 - 0.05, 0.12, 0.5, '#3a3a40', 0, -0.25);
   cab.box(inr.driverSeat.x, dashY + 0.12, dashZ - 0.2, 0.4, 0.18, 0.03, '#141416');
-  cab.box(0, y0 + 0.25, (inr.driverSeat.z + dashZ) / 2, 0.24, 0.5, 0.5, '#2a2a2e');
+  cab.box(0, cy0 + 0.25, (inr.driverSeat.z + dashZ) / 2, 0.24, 0.5, 0.5, '#2a2a2e');
+  // front wheel wells where the tires rise above the cab floor
+  const zf = frontAxleZ(def), wr = def.dims.wheelRadius;
+  const wellTop = 2 * wr + 0.08, wz0 = Math.max(zEnd, zf - wr - 0.08);
+  if (wellTop > cy0 + 0.02 && wz0 < zCab) {
+    const wx = Math.min(def.dims.track / 2, cabHalf - 0.2);
+    for (const sx of [-1, 1]) cab.box(sx * wx, (cy0 + wellTop) / 2, (wz0 + zCab) / 2, 0.4, wellTop - cy0, zCab - wz0, '#2a2a2e');
+  }
   // rear-view mirror and sun visors under the headliner
-  cab.box(0, cabTop - 0.12, dashZ - 0.25, 0.26, 0.07, 0.03, '#1e1e22');
-  cab.box(0, cabTop - 0.05, dashZ - 0.25, 0.03, 0.08, 0.03, '#1e1e22');
-  for (const p of [inr.driverSeat, inr.passengerSeat]) cab.box(p.x, cabTop - 0.03, dashZ - 0.32, 0.5, 0.03, 0.2, '#b8ae9c');
+  const mz = wsTopZ - 0.1;
+  cab.box(0, cabTop - 0.12, mz, 0.26, 0.07, 0.03, '#1e1e22');
+  cab.box(0, cabTop - 0.12, mz - 0.017, 0.24, 0.055, 0.004, '#aab8c6'); // mirror glass
+  cab.box(0, cabTop - 0.05, mz, 0.03, 0.08, 0.03, '#1e1e22');
+  for (const p of [inr.driverSeat, inr.passengerSeat]) cab.box(p.x, cabTop - 0.03, wsTopZ - 0.14, 0.5, 0.03, 0.2, '#b8ae9c');
   const cabMesh = new THREE.Mesh(cab.build(), MAT.vc);
   cabMesh.castShadow = true;
   g.add(cabMesh);
@@ -651,7 +708,7 @@ export function buildInterior(def: VehicleDef): InteriorParts {
   g.add(light);
   // daylight bounced in through the windshield (the roof blocks direct sun)
   const cabFill = new THREE.PointLight(0xfff0dc, 0, 4.5, 1.1);
-  cabFill.position.set(0, cabTop - 0.35, inr.driverSeat.z + 0.35);
+  cabFill.position.set(0, cabTop - 0.45, inr.driverSeat.z); // above the seats: its hot spot stays out of the driver's view
   g.add(cabFill);
   void shade;
   return { group: g, upper, light, lampMat, cabFill };

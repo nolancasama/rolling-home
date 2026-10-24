@@ -53,16 +53,17 @@ interface Key {
 }
 
 const KEYS: Key[] = [
-  { h: 0, zenith: '#0b1530', horizon: '#1d2a4a', sun: '#8aa0d8', sunI: 0.12, hemiSky: '#3a4a78', hemiGround: '#1a1a22', hemiI: 0.42, stars: 1 },
-  { h: 4.8, zenith: '#101a38', horizon: '#2a3150', sun: '#8aa0d8', sunI: 0.1, hemiSky: '#3a4a78', hemiGround: '#1a1a22', hemiI: 0.4, stars: 0.9 },
+  // Night keys are a readable moonlit blue (stylized), not physically dark.
+  { h: 0, zenith: '#0b1530', horizon: '#1d2a4a', sun: '#9db2e8', sunI: 0.4, hemiSky: '#5d6fa8', hemiGround: '#2a2a36', hemiI: 0.85, stars: 1 },
+  { h: 4.8, zenith: '#101a38', horizon: '#2a3150', sun: '#9db2e8', sunI: 0.36, hemiSky: '#5d6fa8', hemiGround: '#2a2a36', hemiI: 0.8, stars: 0.9 },
   { h: 6.0, zenith: '#3a5a92', horizon: '#f0a070', sun: '#ffb070', sunI: 0.9, hemiSky: '#a8b8d8', hemiGround: '#6a5040', hemiI: 0.62, stars: 0.1 },
   { h: 7.5, zenith: '#5a92d0', horizon: '#f2d0a8', sun: '#ffe0b0', sunI: 2.0, hemiSky: '#c8daf0', hemiGround: '#8a6a4a', hemiI: 0.85, stars: 0 },
   { h: 12, zenith: '#4f8fd8', horizon: '#cfe2f2', sun: '#fff4e0', sunI: 2.6, hemiSky: '#d8e8f8', hemiGround: '#9a7a58', hemiI: 0.95, stars: 0 },
   { h: 16.5, zenith: '#5a90d0', horizon: '#f0dcc0', sun: '#ffe6c0', sunI: 2.3, hemiSky: '#d0dcf0', hemiGround: '#9a7050', hemiI: 0.9, stars: 0 },
   { h: 18.6, zenith: '#4a5aa0', horizon: '#f49060', sun: '#ff9a50', sunI: 1.3, hemiSky: '#b8a8c8', hemiGround: '#6a4a3a', hemiI: 0.7, stars: 0.05 },
-  { h: 19.8, zenith: '#26305e', horizon: '#9a5a6a', sun: '#c07a90', sunI: 0.35, hemiSky: '#5a5a88', hemiGround: '#2a2228', hemiI: 0.5, stars: 0.5 },
-  { h: 21, zenith: '#0e1834', horizon: '#26304e', sun: '#8aa0d8', sunI: 0.14, hemiSky: '#3a4a78', hemiGround: '#1a1a22', hemiI: 0.42, stars: 1 },
-  { h: 24, zenith: '#0b1530', horizon: '#1d2a4a', sun: '#8aa0d8', sunI: 0.12, hemiSky: '#3a4a78', hemiGround: '#1a1a22', hemiI: 0.42, stars: 1 },
+  { h: 19.8, zenith: '#26305e', horizon: '#9a5a6a', sun: '#c07a90', sunI: 0.35, hemiSky: '#6a6a98', hemiGround: '#2a2430', hemiI: 0.66, stars: 0.5 },
+  { h: 21, zenith: '#0e1834', horizon: '#26304e', sun: '#9db2e8', sunI: 0.4, hemiSky: '#5d6fa8', hemiGround: '#2a2a36', hemiI: 0.85, stars: 1 },
+  { h: 24, zenith: '#0b1530', horizon: '#1d2a4a', sun: '#9db2e8', sunI: 0.4, hemiSky: '#5d6fa8', hemiGround: '#2a2a36', hemiI: 0.85, stars: 1 },
 ];
 
 const ca = new THREE.Color(), cb = new THREE.Color();
