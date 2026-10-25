@@ -2,26 +2,54 @@ import * as THREE from 'three';
 import { materialDef } from '../../data/materials';
 import type { Finish, MaterialDef, SurfaceKind } from '../../data/types';
 
-/** All interior shaders refer to this object; changing it never recompiles a shader. */
+/** All interior shaders refer to these objects; changing them never recompiles a shader. */
 export const interiorAmbient = { value: .85 };
+/** Bounce light inside the vehicle: scales the interior environment's diffuse and specular contribution. */
+export const interiorBounce = { value: new THREE.Color(0, 0, 0) };
 const ambientMaterials = new WeakSet<THREE.Material>();
+let interiorEnvironment: THREE.Texture | null = null;
+
+/** Prefiltered room environment used as soft bounce light by every interior material created afterwards. */
+export function setInteriorEnvironment(texture: THREE.Texture): void {
+  interiorEnvironment = texture;
+}
+
+// Without global illumination an RV interior only sees the attenuated sky hemisphere and goes murky
+// (white ceilings render brown). A neutral room environment, scaled per frame by window light and lit
+// fixtures, stands in for the light bouncing around the room.
+const BOUNCE = `#include <lights_fragment_maps>
+#if defined( RE_IndirectDiffuse )
+  iblIrradiance *= interiorBounce;
+#endif
+#if defined( RE_IndirectSpecular )
+  radiance *= interiorBounce;
+  #ifdef USE_CLEARCOAT
+    clearcoatRadiance *= interiorBounce;
+  #endif
+#endif`;
 
 export function applyInteriorAmbient(material: THREE.MeshStandardMaterial): void {
   if (ambientMaterials.has(material)) return;
   ambientMaterials.add(material);
   material.userData.interiorAmbient = true;
+  if (interiorEnvironment && !material.envMap) {
+    material.envMap = interiorEnvironment;
+    material.envMapIntensity = 1;
+  }
   const previous = material.onBeforeCompile;
   const previousKey = material.customProgramCacheKey();
   material.onBeforeCompile = (shader, renderer) => {
     previous.call(material, shader, renderer);
     shader.uniforms.interiorAmbient = interiorAmbient;
-    shader.fragmentShader = 'uniform float interiorAmbient;\n' + shader.fragmentShader;
+    shader.uniforms.interiorBounce = interiorBounce;
+    shader.fragmentShader = 'uniform float interiorAmbient;\nuniform vec3 interiorBounce;\n' + shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_begin>',
       THREE.ShaderChunk.lights_fragment_begin.replace(
         'getHemisphereLightIrradiance( hemisphereLights[ i ], geometryNormal )',
-        '(interiorAmbient * getHemisphereLightIrradiance( hemisphereLights[ i ], geometryNormal ))'));
+        '(interiorAmbient * getHemisphereLightIrradiance( hemisphereLights[ i ], geometryNormal ))'))
+      .replace('#include <lights_fragment_maps>', BOUNCE);
   };
-  material.customProgramCacheKey = () => previousKey + '|rh-interior-ambient-v1';
+  material.customProgramCacheKey = () => previousKey + '|rh-interior-ambient-v2';
   material.needsUpdate = true;
 }
 
@@ -210,12 +238,13 @@ function drawPattern(def: MaterialDef, finish: Finish, px: number): PatternCanva
     g.save(); h.save(); g.translate(x, y); h.translate(x, y);
     if (horizontal) { g.rotate(-Math.PI / 2); h.rotate(-Math.PI / 2); g.translate(-w, 0); h.translate(-w, 0); }
     g.beginPath(); g.rect(0, 0, w, len); g.clip();
-    const variation = (rand() - .5) * 25;
+    // Individual floor planks differ visibly in tone; veneer faces stay even.
+    const variation = (rand() - .5) * (pattern === 'plank' ? 46 : 25);
     g.fillStyle = tone(base, variation); g.fillRect(0, 0, w, len);
     const grainCount = Math.max(8, Math.round(w / 2));
     for (let j = 0; j < grainCount; j++) {
       const gx = rand() * w, bend = (rand() - .5) * w * .25;
-      g.strokeStyle = tone(base, variation - 22 + rand() * 34); g.globalAlpha = .3 + rand() * .25;
+      g.strokeStyle = tone(base, variation - 22 + rand() * 34); g.globalAlpha = .35 + rand() * .35;
       g.lineWidth = .4 + rand() * 1.2; g.beginPath(); g.moveTo(gx, 0);
       g.bezierCurveTo(gx + bend, len * .3, gx - bend, len * .7, gx, len); g.stroke();
       h.strokeStyle = '#757575'; h.lineWidth = .6; h.beginPath(); h.moveTo(gx, 0);
@@ -252,7 +281,8 @@ function drawPattern(def: MaterialDef, finish: Finish, px: number): PatternCanva
       repeat[0] = (finish.plankW ?? def.plank?.widths[0] ?? def.repeat[0]) * count;
       repeat[1] = (finish.plankL ?? def.plank?.lengths[0] ?? def.repeat[1]) * 2;
       for (let col = 0; col < count; col++) {
-        const offset = col % 3 * px / 6;
+        // Random (seeded) end-joint stagger reads as laid flooring; a fixed step reads as a pattern.
+        const offset = rand() * px / 2;
         for (let row = -1; row < 3; row++) wood(col * px / count, row * px / 2 + offset, px / count, px / 2);
       }
       if (motif === 'shiplap') {
@@ -276,10 +306,22 @@ function drawPattern(def: MaterialDef, finish: Finish, px: number): PatternCanva
       wood(0, 0, px, px, false, false);
       if (['ply', 'birchply'].includes(motif)) {
         // Broad cathedral veneer grain distinguishes sheet plywood from narrow sawn boards.
-        g.strokeStyle = tone(base, motif === 'birchply' ? -13 : -28); g.lineWidth = px * .0015;
+        g.strokeStyle = tone(base, motif === 'birchply' ? -18 : -34); g.lineWidth = px * .003; g.globalAlpha = .7;
         for (let k = 0; k < 17; k++) {
           const width = px * (.04 + k * .025), len = px * (.15 + k * .06);
           g.beginPath(); g.ellipse(px * .52, px * .82, width, len, 0, Math.PI, Math.PI * 2); g.stroke();
+        }
+        g.globalAlpha = 1;
+        // Joints between sheets (the texture spans one 1.22 x 2.44 m sheet).
+        const seam = Math.max(2, px * .004);
+        g.fillStyle = tone(base, -55); g.fillRect(0, 0, seam, px); g.fillRect(0, 0, px, seam);
+        h.fillStyle = '#3a3a3a'; h.fillRect(0, 0, seam, px); h.fillRect(0, 0, px, seam);
+        if (motif === 'ply') for (let i = 0; i < 6; i++) {
+          // A homemade floor: water rings and scuffed traffic patches.
+          const x = rand() * px, y = rand() * px, r = px * (.05 + rand() * .12);
+          const stain = g.createRadialGradient(x, y, r * .2, x, y, r);
+          stain.addColorStop(0, 'rgba(70,45,20,0.16)'); stain.addColorStop(.85, 'rgba(70,45,20,0.24)'); stain.addColorStop(1, 'rgba(70,45,20,0)');
+          g.fillStyle = stain; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
         }
       }
     }
@@ -289,16 +331,27 @@ function drawPattern(def: MaterialDef, finish: Finish, px: number): PatternCanva
     }
   } else if (pattern === 'tile' || pattern === 'sheet') {
     const cols = motif === 'subway' ? 2 : 2, rows = motif === 'subway' ? 4 : 2;
-    repeat[0] *= cols; repeat[1] *= rows;
+    // Tiles: the material repeat is one tile. Checker and parquet prints: it is the whole 2 x 2 pattern.
+    if (motif !== 'checker' && motif !== 'parquet') { repeat[0] *= cols; repeat[1] *= rows; }
     const tw = px / cols, th = px / rows, grout = Math.max(1, px * .004);
     for (let row = -1; row <= rows; row++) for (let col = -1; col <= cols; col++) {
       const x = col * tw + (motif === 'subway' && row % 2 ? tw / 2 : 0), y = row * th;
       g.fillStyle = motif === 'checker' && (row + col) % 2 ? second : tone(base, (rand() - .5) * 10);
       g.fillRect(x, y, tw, th);
       if (motif === 'parquet') {
-        g.save(); g.beginPath(); g.rect(x, y, tw, th); g.clip();
-        for (let i = 0; i < 5; i++) line(g, second, 1, x + i * tw / 5, y, x + i * tw / 5 + tw, y + th);
-        g.restore();
+        // Printed basket-weave parquet: four slats per square, alternating direction square to square.
+        const slats = 4, vertical = (row + col) % 2 === 0;
+        for (let k = 0; k < slats; k++) {
+          g.fillStyle = tone(k % 2 ? second : base, (rand() - .5) * 18);
+          if (vertical) g.fillRect(x + k * tw / slats, y, tw / slats, th);
+          else g.fillRect(x, y + k * th / slats, tw, th / slats);
+          g.globalAlpha = .55;
+          const joint = tone(second, -28), wJoint = Math.max(1, px * .002);
+          if (vertical) line(g, joint, wJoint, x + k * tw / slats, y, x + k * tw / slats, y + th);
+          else line(g, joint, wJoint, x, y + k * th / slats, x + tw, y + k * th / slats);
+          g.globalAlpha = 1;
+        }
+        g.strokeStyle = tone(second, -36); g.lineWidth = Math.max(1, px * .003); g.strokeRect(x, y, tw, th);
       }
       if (pattern === 'tile') {
         g.strokeStyle = second; g.lineWidth = grout; g.strokeRect(x, y, tw, th);

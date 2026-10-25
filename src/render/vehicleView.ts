@@ -7,7 +7,10 @@ import { buildAwning, buildItemModel } from './furniture';
 import { buildBody, buildInterior, makeWheel, type BodyParts, type InteriorParts } from './vehicleBody';
 import { Coverings } from './coverings';
 import { InteriorLights } from './interiorLights';
-import { applyInteriorAmbient, interiorAmbient, materialGenerationStats } from './materials';
+import { applyInteriorAmbient, interiorAmbient, interiorBounce, materialGenerationStats } from './materials';
+
+/** Strength of daylight bouncing around the interior with every window uncovered. */
+const DAY_BOUNCE = 0.5;
 
 const BLANKETS = ['#3f8f8a', '#c8673e', '#5a6a9a', '#8a5a7a'];
 const PACKED = new Set(['furniture', 'appliance', 'system', 'mattress', 'outdoor', 'tool', 'part']);
@@ -248,7 +251,7 @@ export class VehicleView {
     });
   }
 
-  updateInterior(dt: number, s: GameState, camera: THREE.Vector3, occupied: boolean, minutes: number, high: boolean) {
+  updateInterior(dt: number, s: GameState, camera: THREE.Vector3, occupied: boolean, minutes: number, high: boolean, daylight = 1) {
     this.sync(s);
     this.body.updateWorldMatrix(true, true);
     this.interior.shell.updateClipping(this.body.matrixWorld);
@@ -256,6 +259,9 @@ export class VehicleView {
     interiorAmbient.value = this.coverings.ambientFactor;
     this.interiorLights.setHighQuality(high);
     this.interiorLights.update(s, this.vehicleId, camera, occupied, minutes);
+    // Daylight bounces in through the windows (less when the coverings are closed); lit fixtures add theirs.
+    const day = daylight * (.25 + .75 * this.coverings.transmission) * DAY_BOUNCE;
+    interiorBounce.value.setRGB(day, day * .97, day * .92).add(this.interiorLights.bounce);
   }
 
   update(dt: number, speed: number, steer: number, lightsOn: boolean, braking: boolean, cabFill = 0) {

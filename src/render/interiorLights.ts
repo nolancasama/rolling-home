@@ -7,6 +7,7 @@ import { defOf, installedItems } from '../sim/vehicle';
 
 /** Converts photometric fixture output to the stylized scene's exposure. */
 export const INTERIOR_LIGHT_SCALE = 0.075;
+const WHITE = new THREE.Color(1, 1, 1);
 
 export function kelvinColor(kelvin: number): THREE.Color {
   const t = Math.max(1000, Math.min(40000, kelvin)) / 100;
@@ -24,6 +25,8 @@ export class InteriorLights {
   private lenses = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>>();
   private assignments: { uid: string; pool: string; lit: boolean; intensity: number }[] = [];
   private cameraLocal = new THREE.Vector3();
+  /** Light from lit fixtures bouncing off the room's surfaces (scales the interior environment at night). */
+  readonly bounce = new THREE.Color(0, 0, 0);
 
   constructor(private def: VehicleDef) {
     this.group.name = 'interior-light-pool';
@@ -55,7 +58,8 @@ export class InteriorLights {
       } else pos.set(-this.def.interior.halfWidth - .1, this.def.interior.ceilingY - .2, .15);
       const lit = powered && fixtureLit(it.light, { hour: hourOf(minutes), occupied, sleeping: false, awning: v.awning, exterior: spec.kind === 'exterior' });
       const dim = spec.dimmable ? THREE.MathUtils.clamp(it.light?.dim ?? 1, .1, 1) : 1;
-      const color = spec.rgb && it.light?.color ? new THREE.Color(it.light.color) : kelvinColor(it.light?.kelvin ?? spec.kelvin[0]);
+      // Pure black-body tones read orange after tone mapping; keep warm white warm, not amber.
+      const color = spec.rgb && it.light?.color ? new THREE.Color(it.light.color) : kelvinColor(it.light?.kelvin ?? spec.kelvin[0]).lerp(WHITE, .22);
       return { it, spec, pos, lit, dim, color, rank: lit ? spec.lumens * dim / (1 + pos.distanceToSquared(this.cameraLocal)) : -1 };
     });
     const ids = new Set(entries.map(e => e.it.uid));
@@ -74,9 +78,16 @@ export class InteriorLights {
       lens.position.copy(e.pos);
       lens.rotation.y = e.it.where.kind === 'floor' ? e.it.where.rot * Math.PI / 2 : 0;
       lens.material.emissive.copy(e.color);
-      lens.material.emissiveIntensity = e.lit ? 2.8 * e.dim : 0;
-      lens.material.color.copy(e.color).multiplyScalar(e.lit ? 1 : .65);
+      lens.material.emissiveIntensity = e.lit ? 2 * e.dim : 0;
+      // Switched off, a lens is frosted white plastic rather than a tinted bulb.
+      if (e.lit) lens.material.color.copy(e.color);
+      else lens.material.color.set('#ece8df');
     }
+    this.bounce.setRGB(0, 0, 0);
+    for (const e of entries) if (e.lit) this.bounce.add(e.color.clone().multiplyScalar(e.spec.lumens * e.dim / 3600));
+    // Night interiors keep pools of light and darker corners; bounce never flattens them into daylight.
+    const peak = Math.max(this.bounce.r, this.bounce.g, this.bounce.b);
+    if (peak > .3) this.bounce.multiplyScalar(.3 / peak);
     const ranked = entries.filter(e => e.lit).sort((a,b) => b.rank - a.rank);
     const ceilings = ranked.filter(e => e.spec.kind === 'ceiling' || e.spec.kind === 'recessed' || e.spec.kind === 'pendant');
     const shadowEntry = ceilings.sort((a,b) => b.spec.lumens * b.dim - a.spec.lumens * a.dim)[0];
@@ -90,7 +101,12 @@ export class InteriorLights {
         pos: e.pos.clone().add(new THREE.Vector3((i + .5) * length / count - length / 2, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotation)),
       }));
     })];
-    this.points[0].shadow.autoUpdate = !!shadowEntry;
+    const shadow = this.points[0].shadow;
+    shadow.autoUpdate = !!shadowEntry;
+    // A shadow-casting light must render its map at least once: otherwise every lit material samples an
+    // unallocated shadow texture and fails to draw. (By day, before any fixture had been lit, the whole
+    // interior and world vanished, leaving only the sky.)
+    if (this.points[0].castShadow && !shadow.map) shadow.needsUpdate = true;
     const spots = ranked.filter(e => e.spec.kind === 'reading');
     this.assignments = entries.map(e => ({ uid: e.it.uid, pool: 'emissive', lit: e.lit, intensity: 0 }));
     for (const [pool, entries, name] of [[this.points, points, 'point'], [this.spots, spots, 'spot']] as const) {

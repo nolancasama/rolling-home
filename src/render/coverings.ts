@@ -97,7 +97,8 @@ export class Coverings {
       : level === 'down' ? this.def.interior.floorY + .12 : 1e5;
   }
 
-  get ambientFactor(): number {
+  /** Fraction of window light reaching the room (cab glass always counts as open). */
+  get transmission(): number {
     let total = this.cabGlassArea, transmitted = this.cabGlassArea;
     for (const view of this.views.values()) {
       const w = view.window;
@@ -105,7 +106,11 @@ export class Coverings {
       total += area;
       transmitted += area * (view.open + (1 - view.open) * closedTransmission(view.treatment));
     }
-    return .2 + .65 * transmitted / total;
+    return transmitted / total;
+  }
+
+  get ambientFactor(): number {
+    return .2 + .65 * this.transmission;
   }
 
   /** JSON-only semantic state for screenshot harnesses to wait on a completed animation. */

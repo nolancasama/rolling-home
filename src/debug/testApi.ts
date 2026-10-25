@@ -252,6 +252,7 @@ export function installTestApi(game: Game) {
         coverings: game.vv?.coverings.animationState,
         lights: game.vv?.interiorLights.state,
         exposure: game.renderer.toneMappingExposure,
+        targetExposure: game.targetExposure,
         post: game.post?.metrics,
         programs: game.renderer.info.programs?.length,
         drawCalls: game.renderer.info.render.calls,

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MATERIAL_LIST } from '../data/materials';
-import { configureMaterialAnisotropy, finishMaterial, releaseFinishMaterial } from '../render/materials';
+import { configureMaterialAnisotropy, finishMaterial, interiorAmbient, interiorBounce, releaseFinishMaterial } from '../render/materials';
 
 // A standalone Vite entry: this module is never imported by the game or its production entry.
 const style = document.createElement('style');
@@ -40,9 +40,13 @@ const environment = pmrem.fromScene(room, .05); scene.environment = environment.
 room.dispose(); pmrem.dispose();
 const camera = new THREE.OrthographicCamera(-8, 8, 4.5, -4.5, .1, 50);
 camera.position.set(0, 0, 15); camera.lookAt(0, 0, 0);
-const hemi = new THREE.HemisphereLight(0xffffff, 0xc1b8a4, 1.4); scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffffff, 3.2); key.position.set(-5, 7, 9); scene.add(key);
-const fill = new THREE.DirectionalLight(0xe7f0ff, .8); fill.position.set(7, 2, 5); scene.add(fill);
+// Roughly the in-game daytime interior: attenuated sky, room bounce and one soft key light, so swatches
+// show the colors players will see (the earlier, brighter studio washed every material out).
+interiorAmbient.value = .75;
+interiorBounce.value.setScalar(.5);
+const hemi = new THREE.HemisphereLight(0xffffff, 0xc1b8a4, .8); scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-5, 7, 9); scene.add(key);
+const fill = new THREE.DirectionalLight(0xe7f0ff, .4); fill.position.set(7, 2, 5); scene.add(fill);
 const group = new THREE.Group(); scene.add(group);
 const sphereGeometry = new THREE.SphereGeometry(.575, 56, 36);
 // Sphere UVs represent circumference and arc length in meters.

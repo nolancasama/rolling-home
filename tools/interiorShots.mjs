@@ -47,7 +47,7 @@ async function shot(name, eye, target, hour = 10, cutaway = false) {
     const g = window.__rh.game, st = window.__rh.dev.state();
     const skyHour = st.previewMinutes / 60;
     const done = st.coverings?.every(c => c.settled) ?? false;
-    return Math.abs(skyHour - hour) < .001 && st.cutaway === cutaway && g.vv.doorT < .005 && done && Math.abs(st.exposure - 1.575) < .03;
+    return Math.abs(skyHour - hour) < .001 && st.cutaway === cutaway && g.vv.doorT < .005 && done && Math.abs(st.exposure - st.targetExposure) < .01;
   }, { hour, cutaway }, `settled preview ${name}`);
   // Ensure changes have passed through an actual render, without a timed sleep.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
