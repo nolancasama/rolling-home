@@ -5,7 +5,6 @@ import { buildItemModel } from '../render/furniture';
 import { terrainHeight } from '../world/terrain';
 import { VEHICLES } from '../data/vehicles';
 import { AudioEngine } from '../audio/audio';
-import { hourOf } from '../sim/core';
 import { localToWorld } from '../sim/geo';
 import { newGame, type NewGameOptions } from '../sim/newgame';
 import { Sim } from '../sim/sim';
@@ -33,6 +32,9 @@ import { InteriorMode } from './interior';
 import { loadSettings, qualityParams, readSlot, saveSettings, writeSlot, type Settings, type SlotId } from './settings';
 import { VehiclePhysics } from './vehiclePhysics';
 import { WorldView } from './worldView';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { configureMaterialAnisotropy, setInteriorEnvironment } from '../render/materials';
+import { InteriorPost } from '../render/interiorPost';
 
 export type ModeId = 'menu' | PlayerMode | 'furnish';
 
@@ -77,6 +79,11 @@ export class Game {
   private menuVehicle: VehicleView | null = null;
   hudHidden = false;
   fps = 60;
+  /** Rendering only: never advances the save clock or consumes utilities. */
+  previewMinutes: number | null = null;
+  /** Tone-mapping exposure the eye adaptation is easing toward (brighter with the camera indoors). */
+  targetExposure = 1.05;
+  post: InteriorPost | null = null;
   private fpsAcc = 0;
   private fpsN = 0;
   /** Seconds of real time spent driving each road edge (exploration). */
@@ -92,7 +99,14 @@ export class Game {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = qp.shadows > 0;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.localClippingEnabled = true;
+    configureMaterialAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
+    // Soft bounce light for RV interiors (interior materials only; created before any vehicle view).
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    setInteriorEnvironment(pmrem.fromScene(new RoomEnvironment(), 0.04).texture);
+    pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.06, 4200);
+    if (this.settings.quality === 'high') this.post = new InteriorPost(this.renderer, this.scene, this.camera);
     this.input = new Input(canvas);
     this.ui = new UI();
     this.audio = new AudioEngine(this.settings);
@@ -127,6 +141,7 @@ export class Game {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.post?.resize(w, h, this.renderer.getPixelRatio());
   }
 
   applySettings() {
@@ -169,7 +184,7 @@ export class Game {
     this.camera.lookAt(p.x, p.y + 1.5, p.z);
     this.focus.copy(p);
     this.world.update(dt, null, 17.7 * 60, this.focus, null);
-    mv.update(dt, 0, 0, false, false, 0.8);
+    mv.update(dt, 0, 0, false, false);
   }
 
   // ───────────── game lifecycle ─────────────
@@ -253,14 +268,11 @@ export class Game {
     const night = this.world.sky.daylight < 0.35;
     const lights = this.mode === 'drive' ? this.drive.lightsOn(night) : false;
     const inside = this.mode === 'interior' || this.mode === 'furnish';
-    const evening = hourOf(s.time.minutes) > 18.5 || hourOf(s.time.minutes) < 6.5;
-    const v = activeVehicle(s);
-    const hasPower = v.batteryWh > 1 || v.hookups.power;
-    const il = !hasPower ? 0 : inside ? (evening ? 3.2 : 1.4) : evening && this.mode !== 'drive' ? 1.6 : 0;
     const day = this.world.sky.daylight;
     const cockpit = this.mode === 'drive' && this.drive.cam === 'cockpit';
-    const fill = cockpit ? 0.5 + 2.2 * day : this.mode === 'interior' ? 0.4 + 1.2 * day : 0;
-    this.vv.update(dt, this.mode === 'drive' ? p.speed : 0, p.steerAngle, lights, this.mode === 'drive' && this.drive.braking, il, fill);
+    const fill = cockpit ? 0.5 + 2.2 * day : this.mode === 'interior' ? .65 * day : 0;
+    this.vv.update(dt, this.mode === 'drive' ? p.speed : 0, p.steerAngle, lights, this.mode === 'drive' && this.drive.braking, fill);
+    this.vv.updateInterior(dt, s, this.camera.position, inside, this.previewMinutes ?? s.time.minutes, this.settings.quality === 'high', this.world.sky.daylight);
   }
 
   setMode(m: ModeId, opts: { quiet?: boolean } = {}) {
@@ -414,12 +426,19 @@ export class Game {
     }
     this.updateVehicleView(dt);
     const pl = this.phys ? { x: this.phys.x, z: this.phys.z, heading: this.phys.heading, hw: this.phys.def.dims.width / 2, hl: this.phys.def.dims.length / 2 } : null;
-    this.world.update(dt, this.sim.s, this.sim.s.time.minutes, this.focus, pl);
+    this.world.update(dt, this.sim.s, this.previewMinutes ?? this.sim.s.time.minutes, this.focus, pl);
     this.updateMarkers(dt);
     this.audio.update(dt, this);
     this.hud.update(dt);
     this.ui.frame();
-    this.renderer.render(this.scene, this.camera);
+    // Adapt from the actual camera position, including the cockpit and future walk previews.
+    const localEye = this.vv?.body.worldToLocal(this.camera.position.clone());
+    const inr = this.vv?.def.interior;
+    const indoors = !!localEye && !!inr && Math.abs(localEye.x) < inr.halfWidth && localEye.z > inr.living.z0 && localEye.z < inr.cab.z1 && localEye.y > inr.cabFloorY && localEye.y < inr.ceilingY;
+    this.targetExposure = 1.05 * (indoors ? 1.2 : 1);
+    this.renderer.toneMappingExposure += (this.targetExposure - this.renderer.toneMappingExposure) * (1 - Math.exp(-dt / .8));
+    if (this.settings.quality === 'high' && this.post) this.post.render();
+    else this.renderer.render(this.scene, this.camera);
     this.input.endFrame();
     this.autosaveTimer += dt;
     if (this.autosaveTimer > 300) {

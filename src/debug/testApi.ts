@@ -8,6 +8,7 @@ import { computeWeight } from '../sim/weight';
 import { EDGE_BY_ID, pointAlong, routeTo, type Route } from '../world/roads';
 import type { Game } from '../game/game';
 import { worldTargets } from '../game/interactions';
+import type { Finish, WindowTreatment } from '../data/types';
 
 // Automation/test hooks on window.__rh. Used by the acceptance harness; harmless in play.
 
@@ -221,6 +222,44 @@ export function installTestApi(game: Game) {
       place: () => game.furnish.place(),
       done: () => game.furnish.done(),
     },
+    ...(import.meta.env.DEV ? { dev: {
+      setSurface(id: string, finish: Finish) {
+        const s = game.sim!.s, v = activeVehicle(s);
+        if (!game.vv!.def.interior.surfaces.some(surface => surface.id === id)) throw new Error(`Unknown surface ${id}`);
+        v.custom.surfaces[id] = structuredClone(finish);
+        game.vv!.sync(s);
+      },
+      setWindow(id: string, treatment: WindowTreatment) {
+        const s = game.sim!.s, v = activeVehicle(s);
+        if (!game.vv!.def.interior.windows.some(window => window.id === id && !window.door)) throw new Error(`Unknown or protected window ${id}`);
+        v.custom.windows[id] = structuredClone(treatment);
+        game.vv!.sync(s);
+      },
+      setCovering(id: string, open: number) {
+        const s = game.sim!.s, v = activeVehicle(s);
+        const window = game.vv!.def.interior.windows.find(window => window.id === id);
+        const treatment = v.custom.windows[id] ?? window?.factory;
+        if (!treatment || window?.door) throw new Error(`Window ${id} has no treatment`);
+        v.custom.windows[id] = { ...structuredClone(treatment), open: Math.max(0, Math.min(1, open)) };
+        game.vv!.sync(s);
+      },
+      previewHour(hour: number | null) { game.previewMinutes = hour === null ? null : ((hour % 24 + 24) % 24) * 60; },
+      cutaway(level: false | 'up' | 'cut' | 'down') { game.vv!.setCutaway(level); },
+      /** JSON snapshots: controller waits on semantic state, never animation sleeps. */
+      state: () => ({
+        previewMinutes: game.previewMinutes,
+        cutaway: game.vv?.cutaway,
+        coverings: game.vv?.coverings.animationState,
+        lights: game.vv?.interiorLights.state,
+        exposure: game.renderer.toneMappingExposure,
+        targetExposure: game.targetExposure,
+        post: game.post?.metrics,
+        programs: game.renderer.info.programs?.length,
+        drawCalls: game.renderer.info.render.calls,
+        textureGeneration: game.vv?.textureGeneration,
+        surfaces: game.sim ? structuredClone(activeVehicle(game.sim.s).custom.surfaces) : {},
+      }),
+    } } : {}),
     save: (slot: 'slot1' | 'slot2' | 'slot3' | 'auto') => game.save(slot),
     anchor: (id: string) => {
       const a = ANCHOR_BY_ID[id];

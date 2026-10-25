@@ -5,6 +5,12 @@ import type { GameState, ItemInstance } from '../sim/types';
 import { defOf, itemsInVehicle, mattressOn } from '../sim/vehicle';
 import { buildAwning, buildItemModel } from './furniture';
 import { buildBody, buildInterior, makeWheel, type BodyParts, type InteriorParts } from './vehicleBody';
+import { Coverings } from './coverings';
+import { InteriorLights } from './interiorLights';
+import { applyInteriorAmbient, interiorAmbient, interiorBounce, materialGenerationStats } from './materials';
+
+/** Strength of daylight bouncing around the interior with every window uncovered. */
+const DAY_BOUNCE = 0.5;
 
 const BLANKETS = ['#3f8f8a', '#c8673e', '#5a6a9a', '#8a5a7a'];
 const PACKED = new Set(['furniture', 'appliance', 'system', 'mattress', 'outdoor', 'tool', 'part']);
@@ -28,7 +34,14 @@ export class VehicleView {
   doorTarget = 0;
   private sig = '';
   private wheelSpin = 0;
-  cutaway = false;
+  cutaway: false | 'up' | 'cut' | 'down' = false;
+  coverings: Coverings;
+  interiorLights: InteriorLights;
+  private interiorMaterials = new Set<THREE.MeshStandardMaterial>();
+  private protectedMaterials = new Set<THREE.MeshStandardMaterial>();
+  private generationStart = materialGenerationStats();
+  private generationLast = this.generationStart.count;
+  textureGeneration = { milliseconds: 0, count: 0 };
   /** Meshes of installed items by uid (for furnishing picking/highlight). */
   itemMeshes = new Map<string, THREE.Object3D>();
 
@@ -36,6 +49,12 @@ export class VehicleView {
     this.def = VEHICLES[defId];
     this.parts = buildBody(this.def);
     this.interior = buildInterior(this.def);
+    for (const child of this.interior.group.children) {
+      if (child !== this.interior.shell.group) this.shadeInterior(child, this.protectedMaterials);
+    }
+    this.coverings = new Coverings(this.def, this.interior.shell.clippingPlane);
+    this.interiorLights = new InteriorLights(this.def);
+    this.interior.group.add(this.coverings.group, this.interiorLights.group);
     this.exterior.add(this.parts.group);
     this.body.add(this.exterior, this.interior.group, this.furniture, this.cargo, this.roofCargo, this.extras);
     this.root.add(this.body);
@@ -66,13 +85,16 @@ export class VehicleView {
     this.body.rotation.set(pitch, 0, roll, 'YXZ');
   }
 
-  setCutaway(on: boolean) {
+  setCutaway(level: boolean | 'up' | 'cut' | 'down') {
+    const on = level === true ? 'cut' : level;
     this.cutaway = on;
     this.exterior.visible = !on;
     for (const o of this.interior.upper) o.visible = !on;
     for (const w of this.wheels) w.visible = !on;
     this.extras.visible = !on;
     this.roofCargo.visible = !on;
+    this.interior.shell.setCutaway(on);
+    this.coverings.setCutaway(on);
   }
 
   /** Rebuild furniture/cargo/extras when the layout or loads change. */
@@ -90,6 +112,16 @@ export class VehicleView {
       .filter(Boolean)
       .join('|');
     const v = s.vehicles.find((x) => x.id === this.vehicleId);
+    if (v) {
+      this.interior.shell.sync(v.custom.surfaces);
+      this.coverings.sync(v, items);
+    }
+    const generation = materialGenerationStats();
+    if (generation.count !== this.generationLast) {
+      this.generationLast = generation.count;
+      this.textureGeneration = { milliseconds: generation.milliseconds - this.generationStart.milliseconds, count: generation.count - this.generationStart.count };
+      console.info(`[interior ${this.vehicleId}] generated ${this.textureGeneration.count} texture sets in ${this.textureGeneration.milliseconds.toFixed(1)} ms`);
+    }
     const awn = v ? `${v.awning}` : '';
     if (!force && sig + awn === this.sig) return;
     this.sig = sig + awn;
@@ -97,6 +129,8 @@ export class VehicleView {
   }
 
   private rebuild(s: GameState, items: ItemInstance[]) {
+    for (const mat of this.interiorMaterials) mat.dispose();
+    this.interiorMaterials.clear();
     for (const g of [this.furniture, this.cargo, this.roofCargo, this.extras]) {
       for (const c of [...g.children]) g.remove(c);
     }
@@ -111,8 +145,16 @@ export class VehicleView {
       const model = buildItemModel(d, { mattress: mat ? defOf(mat) : null, condition: it.condition, blanket: BLANKETS[bi++ % BLANKETS.length] });
       const elevation = d.floor?.mount === 'ceiling' ? this.def.interior.ceilingY - floorY - d.floor.height : w.y ?? d.floor?.elevation ?? 0;
       model.position.set(w.x, floorY + elevation, w.z);
+      if (d.floor?.flat) model.position.y += .003;
       model.rotation.y = (w.rot * Math.PI) / 2;
       model.userData.uid = it.uid;
+      this.shadeInterior(model);
+      if (d.floor?.flat) model.traverse(o => {
+        if (!(o instanceof THREE.Mesh)) return;
+        for (const material of Array.isArray(o.material) ? o.material : [o.material]) {
+          material.polygonOffset = true; material.polygonOffsetFactor = -1; material.polygonOffsetUnits = -1;
+        }
+      });
       this.furniture.add(model);
       this.itemMeshes.set(it.uid, model);
     }
@@ -190,7 +232,39 @@ export class VehicleView {
     }
   }
 
-  update(dt: number, speed: number, steer: number, lightsOn: boolean, braking: boolean, interiorLight: number, cabFill = 0) {
+  private shadeInterior(model: THREE.Object3D, owned = this.interiorMaterials) {
+    const clones = new Map<THREE.Material, THREE.Material>();
+    model.traverse(o => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const shade = (m: THREE.Material) => {
+        if (!(m instanceof THREE.MeshStandardMaterial)) return m;
+        let clone = clones.get(m);
+        if (!clone) {
+          clone = m.clone();
+          applyInteriorAmbient(clone as THREE.MeshStandardMaterial);
+          clones.set(m, clone);
+          owned.add(clone as THREE.MeshStandardMaterial);
+        }
+        return clone;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(shade) : shade(o.material);
+    });
+  }
+
+  updateInterior(dt: number, s: GameState, camera: THREE.Vector3, occupied: boolean, minutes: number, high: boolean, daylight = 1) {
+    this.sync(s);
+    this.body.updateWorldMatrix(true, true);
+    this.interior.shell.updateClipping(this.body.matrixWorld);
+    this.coverings.update(dt);
+    interiorAmbient.value = this.coverings.ambientFactor;
+    this.interiorLights.setHighQuality(high);
+    this.interiorLights.update(s, this.vehicleId, camera, occupied, minutes);
+    // Daylight bounces in through the windows (less when the coverings are closed); lit fixtures add theirs.
+    const day = daylight * (.25 + .75 * this.coverings.transmission) * DAY_BOUNCE;
+    interiorBounce.value.setRGB(day, day * .97, day * .92).add(this.interiorLights.bounce);
+  }
+
+  update(dt: number, speed: number, steer: number, lightsOn: boolean, braking: boolean, cabFill = 0) {
     this.interior.cabFill.intensity = cabFill;
     this.wheelSpin += (speed * dt) / this.def.dims.wheelRadius;
     for (const w of this.wheels) w.rotation.x = this.wheelSpin;
@@ -202,8 +276,6 @@ export class VehicleView {
     this.parts.headlightMat.emissiveIntensity = lightsOn ? 2.2 : 0;
     this.parts.tailMat.emissiveIntensity = braking ? 2.5 : lightsOn ? 0.9 : 0.15;
     if (this.headlights) this.headlights.intensity = lightsOn ? 40 : 0;
-    this.interior.light.intensity = interiorLight;
-    this.interior.lampMat.emissiveIntensity = interiorLight > 0.1 ? 1.2 : 0.15;
     const wheel = this.interior.group.getObjectByName('steering');
     if (wheel) wheel.rotation.z = -steer * 6;
   }
@@ -218,6 +290,11 @@ export class VehicleView {
   }
 
   dispose() {
+    this.interior.shell.dispose();
+    this.coverings.dispose();
+    this.interiorLights.dispose();
+    for (const mat of this.interiorMaterials) mat.dispose();
+    for (const mat of this.protectedMaterials) mat.dispose();
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
