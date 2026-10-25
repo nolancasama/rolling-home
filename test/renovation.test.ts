@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DENSITY, PERSON_MASS } from '../src/data/config';
+import { DENSITY, PERSON_MASS, RENOVATION } from '../src/data/config';
 import { materialDef } from '../src/data/materials';
 import { ANCHORS } from '../src/data/map';
 import { VEHICLES } from '../src/data/vehicles';
@@ -8,6 +8,7 @@ import { newItem } from '../src/sim/core';
 import { coveringArea, coveringMass, coveringTransmission, surfaceGeometry } from '../src/sim/finishes';
 import { freeWallSpan } from '../src/sim/furnish';
 import { newGame } from '../src/sim/newgame';
+import { makeBlueprint } from '../src/sim/blueprints';
 import * as renovation from '../src/sim/renovation';
 import { mulberry32 } from '../src/sim/rng';
 import { deserialize, serialize } from '../src/sim/save';
@@ -148,6 +149,23 @@ describe('renovation draft operations', () => {
     assertRefusedUnchanged(d, () => renovation.placeOwned(d, foreign.uid, floor()));
   });
 
+  it('refuses a placement that newly blocks another item while tolerating prior blueprint issues', () => {
+    const s = empty();
+    newItem(s, 'double_bed', { kind: 'floor', vehicle: s.vehicleId, x: 0, z: -2.94, rot: 0 });
+    const d = renovation.begin(s, s.vehicleId);
+    // A 2 m sofa across the aisle ahead of the bed leaves 14 cm at each side: nobody can walk past it.
+    assertRefusedUnchanged(d, () => renovation.addFromCatalog(d, 'sofa_lounge', floor(0, -1.0, 0), { config: { w: 2.0 } }));
+    const blocked = renovation.addFromCatalog(d, 'sofa_lounge', floor(0, -1.0, 0), { config: { w: 2.0 } });
+    expect(blocked).toMatchObject({ ok: false, reason: 'Would block the way to Double bed frame.' });
+
+    const source = empty();
+    newItem(source, 'plant', { kind: 'floor', vehicle: source.vehicleId, x: 10, z: 0, rot: 0 });
+    const blueprint = makeBlueprint(source, source.vehicleId, { id: 'broken', name: 'Broken layout', createdAt: '2026-10-25T00:00:00.000Z' });
+    const draft = renovation.begin(empty(), source.vehicleId);
+    good(renovation.applyBlueprint(draft, blueprint));
+    good(renovation.addFromCatalog(draft, 'plant', floor()));
+  });
+
   it('records all undo snapshots, restores them in both directions, clears redo, and caps history at 200', () => {
     const s = empty(), d = renovation.begin(s, s.vehicleId), before = snapshot(d);
     good(renovation.addFromCatalog(d, 'plant', floor()));
@@ -285,6 +303,27 @@ describe('renovation pricing and atomic commit', () => {
     }
   });
 
+  it('prices new cabinet finish choices as purchase options without double-charging countertops', () => {
+    const walnutState = empty(), walnut = renovation.begin(walnutState, walnutState.vehicleId);
+    const walnutCabinet = good(renovation.addFromCatalog(walnut, 'cab_base', floor(.94, -1, 3), {
+      config: { w: .5, h: .55, d: .4 }, finish: { fronts: { mat: 'cab_walnut' } },
+    })).uid;
+    const walnutItem = walnut.s.items[walnutCabinet], walnutQuote = renovation.summary(walnut, ctx);
+    const walnutPremium = .5 * .55 * (materialDef('cab_walnut').pricePerM2 - materialDef('paint_satin').pricePerM2);
+    expect(walnutQuote.goods).toBeCloseTo(defOf(walnutItem).price + walnutPremium, 2);
+    expect(walnutQuote.diyMinutes).toBe(RENOVATION.installMinutes.cabinet);
+    expect(walnutQuote.lines.find(line => line.label === 'Base cabinet: Walnut veneer fronts')).toMatchObject({ amount: expect.closeTo(walnutPremium, 2), minutes: 0 });
+
+    const quartzState = empty(), quartz = renovation.begin(quartzState, quartzState.vehicleId);
+    const quartzCabinet = good(renovation.addFromCatalog(quartz, 'cab_base', floor(.94, -1, 3), {
+      config: { w: .5, h: .55, d: .4 }, finish: { counter: { mat: 'counter_quartz' } },
+    })).uid;
+    const quartzItem = quartz.s.items[quartzCabinet], quartzQuote = renovation.summary(quartz, ctx);
+    expect(quartzQuote.goods).toBeCloseTo(defOf(quartzItem).price, 2);
+    expect(quartzQuote.diyMinutes).toBe(RENOVATION.installMinutes.cabinet);
+    expect(quartzQuote.lines.some(line => line.ref === quartzCabinet && line.kind === 'refinish' && /counter/i.test(line.label))).toBe(false);
+  });
+
   it('charges owned cabinet placement and relocation, and half labor on removal; furniture moves are free', () => {
     const s = empty();
     const cabinet = newItem(s, 'cab_base', { kind: 'stored', vehicle: s.vehicleId, comp: 'rearbay' }, { config: { w: .5, h: .55, d: .4 } });
@@ -314,6 +353,13 @@ describe('renovation pricing and atomic commit', () => {
     good(renovation.setWindow(d, 'L2', { ...roller(), valance: { mat: 'win_blackout' } }));
     const covered = renovation.summary(d, ctx);
     expect(covered.goods).toBeGreaterThan(fronts.goods);
+    const l2 = VEHICLES.classc.interior.windows.find(window => window.id === 'L2')!;
+    const withoutValance = renovation.begin(s, s.vehicleId);
+    good(renovation.setWindow(withoutValance, 'L2', roller()));
+    const withValance = renovation.begin(s, s.vehicleId);
+    good(renovation.setWindow(withValance, 'L2', { ...roller(), valance: { mat: 'win_blackout' } }));
+    expect(renovation.summary(withValance, ctx).goods - renovation.summary(withoutValance, ctx).goods).toBeCloseTo(RENOVATION.valance.basePrice + RENOVATION.valance.pricePerMeter * (l2.a1 - l2.a0), 2);
+    expect(renovation.summary(withValance, ctx).diyMinutes - renovation.summary(withoutValance, ctx).diyMinutes).toBe(RENOVATION.valance.laborMinutes);
     expect(coveringArea(VEHICLES.classc.interior.windows.find(w => w.id === 'L2')!, roller())).toBeGreaterThan(0);
     const free = renovation.begin(s, s.vehicleId);
     good(renovation.setState(free, uidOf(s, 'dinette'), 'bed'));

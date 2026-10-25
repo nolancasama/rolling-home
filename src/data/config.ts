@@ -108,6 +108,20 @@ export const ECONOMY = {
   latePenaltyPerHour: 0.04,
 };
 
+/** Pricing and labor balance for Design Mode renovations. */
+export const RENOVATION = {
+  proRatePerHour: 70,
+  proTimeFactor: 0.35,
+  deliveryFraction: 0.08,
+  deliveryMinimum: 15,
+  secondhandSaleFraction: 0.3,
+  refinishMinutesPerM2: 40,
+  handle: { price: 6, minutes: 2 },
+  installMinutes: { plumbing: 120, propane: 60, cabinet: 35, appliance: 45, fixture: 15, system: 40, mattress: 2, furniture: 10 },
+  removalFactor: 0.5,
+  valance: { basePrice: 30, pricePerMeter: 35, laborMinutes: 10 },
+} as const;
+
 export const JOBS = {
   maxActive: 3,
   graceHours: 12,

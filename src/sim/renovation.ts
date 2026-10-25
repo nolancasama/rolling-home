@@ -1,4 +1,5 @@
 import { SHOPS } from '../data/content';
+import { RENOVATION } from '../data/config';
 import { itemDef } from '../data/items';
 import { COVERINGS, MATERIALS, materialDef } from '../data/materials';
 import type { Finish, ItemConfig, SlotKind, SurfaceKind, WindowTreatment } from '../data/types';
@@ -54,7 +55,11 @@ function vehicleItem(d: Draft, uid: string): ItemInstance | undefined {
   return it && 'vehicle' in it.where && it.where.vehicle === d.vid ? it : undefined;
 }
 const installed = (it: ItemInstance) => ['floor', 'slot', 'mattress'].includes(it.where.kind);
-function validateTouched(d: Draft, uids: string[]): Result {
+function layoutCheck(d: Draft) {
+  const vd = vdef(vehicleById(d.s, d.vid));
+  return checkLayout(vd, layoutOf(d.s, d.vid), d.s, d.vid);
+}
+function validateTouched(d: Draft, uids: string[], before?: ReturnType<typeof layoutCheck>): Result {
   const vd = vdef(vehicleById(d.s, d.vid));
   const layout = layoutOf(d.s, d.vid), check = checkLayout(vd, layout, d.s, d.vid);
   for (const uid of uids) {
@@ -70,9 +75,18 @@ function validateTouched(d: Draft, uids: string[]): Result {
       if (use.used > use.capacity + 1e-6) return fail(`Not enough ${slot.kind} space: capacity ${use.capacity}, needs ${use.used}.`);
     }
   }
+  if (before) {
+    for (const item of layout) {
+      if (uids.includes(item.uid)) continue;
+      const wasBlocked = before.issues[item.uid]?.some(issue => issue.code === 'blocked' && issue.severity === 'block');
+      const isBlocked = check.issues[item.uid]?.some(issue => issue.code === 'blocked' && issue.severity === 'block');
+      if (!wasBlocked && isBlocked) return fail(`Would block the way to ${defOf(d.s.items[item.uid]).name}.`);
+    }
+    if (!before.cabBlocked && check.cabBlocked) return fail("Would block the path to the driver's seat.");
+  }
   return ok();
 }
-function place(d: Draft, it: ItemInstance, p: Place): Result {
+function place(d: Draft, it: ItemInstance, p: Place, before: ReturnType<typeof layoutCheck>): Result {
   if ('slot' in p) {
     if (!defOf(it).slot || defOf(it).slot!.kind !== p.slot) return fail('That component does not fit this system slot.');
     it.where = { kind: 'slot', vehicle: d.vid, slot: p.slot };
@@ -80,17 +94,18 @@ function place(d: Draft, it: ItemInstance, p: Place): Result {
     if (!defOf(it).floor) return fail('That item cannot be placed on the floor plan.');
     it.where = { kind: 'floor', vehicle: d.vid, x: p.x, z: p.z, rot: ((p.rot % 4) + 4) % 4, ...(p.y === undefined ? {} : { y: p.y }) };
   }
-  return validateTouched(d, [it.uid]);
+  return validateTouched(d, [it.uid], before);
 }
 export function addFromCatalog(d: Draft, defId: string, p: Place, opts: Pick<ItemInstance, 'config' | 'finish' | 'state' | 'light'> = {}): Result<{ uid: string }> {
   return edit(d, () => {
     const def = itemDef(defId), vd = vdef(vehicleById(d.s, d.vid));
+    const before = layoutCheck(d);
     const it = newItem(d.s, defId, { kind: 'carried' }, copy(opts));
     if (def.family) it.config = normalizeConfig(def, opts.config, vd.interior.ceilingY - vd.interior.floorY);
     if (opts.state && !def.floor?.states?.some(st => st.id === opts.state)) return fail('That state is not available.');
     const door = doorFitIssue(vd, defOf(it), d.s.gameType === 'creative' && !!d.s.creativeRelaxed);
     if (door?.severity === 'block') return fail(door.text);
-    const r = place(d, it, p); if (!r.ok) return r;
+    const r = place(d, it, p, before); if (!r.ok) return r;
     for (const [slot, finish] of Object.entries(opts.finish ?? {})) { const r = finishItem(d, { uid: it.uid, slot }, finish); if (!r.ok) return r; }
     if (opts.light) { const r = changeLight(d.s, d.vid, it.uid, opts.light); if (!r.ok) return r; }
     return ok({ uid: it.uid });
@@ -100,18 +115,19 @@ export function placeOwned(d: Draft, uid: string, p: Place): Result {
   return edit(d, () => {
     const it = vehicleItem(d, uid);
     if (!it || it.where.kind !== 'stored') return fail('The item must be in this vehicle’s storage.');
-    return place(d, it, p);
+    return place(d, it, p, layoutCheck(d));
   });
 }
 export function moveItems(d: Draft, moves: { uid: string; x: number; z: number; rot?: number; y?: number }[]): Result {
   return edit(d, () => {
     if (!moves.length || new Set(moves.map(m => m.uid)).size !== moves.length) return fail('Choose distinct installed items to move.');
+    const before = layoutCheck(d);
     for (const m of moves) {
       const it = vehicleItem(d, m.uid);
       if (!it || it.where.kind !== 'floor') return fail('That item is not installed on this floor plan.');
       Object.assign(it.where, { x: m.x, z: m.z }, m.rot === undefined ? {} : { rot: ((m.rot % 4) + 4) % 4 }, m.y === undefined ? {} : { y: m.y });
     }
-    return validateTouched(d, moves.map(m => m.uid));
+    return validateTouched(d, moves.map(m => m.uid), before);
   });
 }
 export function rotate(d: Draft, uid: string, dir = 1): Result {
@@ -196,7 +212,10 @@ export function setWindow(d: Draft, windowId: string, treatment: WindowTreatment
 }
 export function setLight(d: Draft, uid: string, settings: Partial<LightSettings>): Result { return edit(d, () => changeLight(d.s, d.vid, uid, settings)); }
 export function setState(d: Draft, uid: string, state: string): Result {
-  return edit(d, () => { const r = setItemState(d.s, d.vid, uid, state); return r.ok ? validateTouched(d, [uid]) : r; });
+  return edit(d, () => {
+    const before = layoutCheck(d), r = setItemState(d.s, d.vid, uid, state);
+    return r.ok ? validateTouched(d, [uid], before) : r;
+  });
 }
 export function setConfig(d: Draft, uid: string, config: ItemConfig): Result {
   return edit(d, () => {
@@ -204,9 +223,10 @@ export function setConfig(d: Draft, uid: string, config: ItemConfig): Result {
     if (!it || d.base.items[uid]) return fail('Only unpurchased items can be configured.');
     const def = itemDef(it.def), vd = vdef(vehicleById(d.s, d.vid));
     if (!def.family) return fail('That item is not configurable.');
+    const before = layoutCheck(d);
     it.config = normalizeConfig(def, config, vd.interior.ceilingY - vd.interior.floorY);
     const door = doorFitIssue(vd, defOf(it), d.s.gameType === 'creative' && !!d.s.creativeRelaxed);
-    return door?.severity === 'block' ? fail(door.text) : validateTouched(d, [uid]);
+    return door?.severity === 'block' ? fail(door.text) : validateTouched(d, [uid], before);
   });
 }
 export function swapMattress(d: Draft, bedUid: string, mattressDefOrUid: string): Result {
@@ -247,9 +267,9 @@ const cents = (n: number) => Math.round(n * 100) / 100 || 0;
 function category(it: ItemInstance): string { return defOf(it).family?.id === 'cabinet' ? 'cabinet' : defOf(it).category; }
 function installMinutes(it: ItemInstance): number {
   const def = defOf(it);
-  if (def.floor?.plumbing) return 120;
-  if (def.floor?.propane) return 60;
-  return ({ cabinet: 35, appliance: 45, fixture: 15, system: 40, mattress: 2, furniture: 10 } as Record<string, number>)[category(it)] ?? 0;
+  if (def.floor?.plumbing) return RENOVATION.installMinutes.plumbing;
+  if (def.floor?.propane) return RENOVATION.installMinutes.propane;
+  return RENOVATION.installMinutes[category(it) as keyof typeof RENOVATION.installMinutes] ?? 0;
 }
 const laborCategory = (it: ItemInstance) => ['cabinet', 'appliance', 'fixture', 'system'].includes(category(it));
 function slotArea(it: ItemInstance, slot: string): number {
@@ -288,9 +308,9 @@ export function summary(d: Draft, ctx: RenovationContext & { pro: boolean }): Re
     }
     if (base && (installed(base) && !installed(it) || it.where.kind === 'removed')) {
       const disposition: Removal = it.where.kind === 'removed' ? it.where.sell ? 'sell' : 'discard' : 'store';
-      const value = Math.round(defOf(base).price * 0.3 * base.condition);
+      const value = Math.round(defOf(base).price * RENOVATION.secondhandSaleFraction * base.condition);
       removed.push({ uid: it.uid, name: itemName(it), disposition, value });
-      if (installed(base) && laborCategory(base)) add('remove', `Remove ${itemName(it)}`, 0, installMinutes(base) * 0.5, it.uid);
+      if (installed(base) && laborCategory(base)) add('remove', `Remove ${itemName(it)}`, 0, installMinutes(base) * RENOVATION.removalFactor, it.uid);
       if (disposition === 'sell') add('sale', `Sell ${itemName(it)}`, -value, 0, it.uid);
     }
     if (it.where.kind === 'removed') continue;
@@ -298,7 +318,13 @@ export function summary(d: Draft, ctx: RenovationContext & { pro: boolean }): Re
       const initial = base?.finish?.[slot.id] ?? slot.default, finish = it.finish?.[slot.id] ?? slot.default;
       if (same(initial, finish)) continue;
       const area = slotArea(it, slot.id), handles = handleCount(it);
-      add('refinish', `${itemName(it)}: ${slot.label}`, slot.id === 'handles' ? handles * 6 : area * materialDef(finish.mat).pricePerM2, slot.id === 'handles' ? handles * 2 : area * 40, it.uid);
+      if (!base) {
+        if (slot.id === 'counter' || slot.id === 'top') continue;
+        const premium = area * Math.max(0, materialDef(finish.mat).pricePerM2 - materialDef(slot.default.mat).pricePerM2);
+        add('refinish', `${itemName(it)}: ${materialDef(finish.mat).name} ${slot.label.toLowerCase()}`, premium, 0, it.uid);
+      } else {
+        add('refinish', `${itemName(it)}: ${slot.label}`, slot.id === 'handles' ? handles * RENOVATION.handle.price : area * materialDef(finish.mat).pricePerM2, slot.id === 'handles' ? handles * RENOVATION.handle.minutes : area * RENOVATION.refinishMinutesPerM2, it.uid);
+      }
     }
   }
   for (const surface of vd.interior.surfaces) {
@@ -313,7 +339,7 @@ export function summary(d: Draft, ctx: RenovationContext & { pro: boolean }): Re
     const physical = (t: WindowTreatment | undefined) => t && { ...t, open: undefined, layer: undefined };
     if (same(physical(t), physical(initial))) continue;
     const spec = COVERINGS[t.type], span = window.a1 - window.a0;
-    add('covering', `${window.id}: ${spec.name}`, spec.basePrice + spec.pricePerM2 * coveringArea(window, t) + (t.valance ? 25 + 15 * span : 0), spec.laborMin + (t.valance ? 10 : 0), window.id);
+    add('covering', `${window.id}: ${spec.name}`, spec.basePrice + spec.pricePerM2 * coveringArea(window, t) + (t.valance ? RENOVATION.valance.basePrice + RENOVATION.valance.pricePerMeter * span : 0), spec.laborMin + (t.valance ? RENOVATION.valance.laborMinutes : 0), window.id);
   }
   const layout = checkLayout(vd, layoutOf(d.s, d.vid), d.s, d.vid);
   for (const [uid, list] of Object.entries(layout.issues)) for (const issue of list) issues.push({ ...issue, uid });
@@ -329,8 +355,8 @@ export function summary(d: Draft, ctx: RenovationContext & { pro: boolean }): Re
   for (const text of weightAfter.messages) issues.push({ code: 'weight', text, severity: 'warn' });
   const goods = cents(lines.filter(l => ['item', 'surface', 'refinish', 'covering'].includes(l.kind)).reduce((n, l) => n + l.amount, 0));
   const sales = cents(-lines.filter(l => l.kind === 'sale').reduce((n, l) => n + l.amount, 0));
-  const diyMinutes = lines.reduce((n, l) => n + l.minutes, 0), proMinutes = diyMinutes * 0.35, proCost = cents(diyMinutes / 60 * 70);
-  const delivery = goods > 0 && !ctx.atShop ? cents(Math.max(15, goods * 0.08)) : 0, labor = ctx.pro ? proCost : 0;
+  const diyMinutes = lines.reduce((n, l) => n + l.minutes, 0), proMinutes = diyMinutes * RENOVATION.proTimeFactor, proCost = cents(diyMinutes / 60 * RENOVATION.proRatePerHour);
+  const delivery = goods > 0 && !ctx.atShop ? cents(Math.max(RENOVATION.deliveryMinimum, goods * RENOVATION.deliveryFraction)) : 0, labor = ctx.pro ? proCost : 0;
   if (delivery) add('delivery', 'Delivery', delivery, 0, d.vid);
   if (ctx.pro) add('labor', 'Professional installation', proCost, 0, d.vid);
   const creative = d.s.gameType === 'creative', total = creative ? 0 : cents(goods + labor + delivery - sales), minutes = creative ? 0 : ctx.pro ? proMinutes : diyMinutes;
