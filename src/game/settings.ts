@@ -21,7 +21,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  quality: 'medium', master: 0.8, music: 0.45, sfx: 0.8, sensitivity: 1, invertY: false, fov: 68, units: 'imperial',
+  quality: 'high', master: 0.8, music: 0.45, sfx: 0.8, sensitivity: 1, invertY: false, fov: 68, units: 'imperial',
   parkingGuides: true, steeringAssist: false, autoLights: true, driveCam: 'chase', needsHud: 'auto', minimap: true,
 };
 

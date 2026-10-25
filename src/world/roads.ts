@@ -126,6 +126,29 @@ export interface RoadHit {
   side: number;
 }
 
+const MAX_HALF_WIDTH = Math.max(...EDGES.map((e) => e.def.width)) / 2;
+
+/** Is (x, z) within `extra` metres of any road's edge? Each segment uses its own road's width, so a narrow
+ *  track meeting a wide street cannot hide the street's corridor (nearestRoad keeps only the closest). */
+export function inRoadCorridor(x: number, z: number, extra: number): boolean {
+  const r = Math.ceil((MAX_HALF_WIDTH + extra) / CELL);
+  const cx0 = Math.floor(x / CELL);
+  const cz0 = Math.floor(z / CELL);
+  for (let cx = cx0 - r; cx <= cx0 + r; cx++) {
+    for (let cz = cz0 - r; cz <= cz0 + r; cz++) {
+      const list = grid.get(key(cx, cz));
+      if (!list) continue;
+      for (const code of list) {
+        const e = EDGES[Math.floor(code / 65536)];
+        const i = code % 65536;
+        const lim = e.def.width / 2 + extra;
+        if (projectSegment(x, z, e.xs[i], e.zs[i], e.xs[i + 1], e.zs[i + 1]).d2 < lim * lim) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** Nearest road point within maxDist (searches neighbouring cells). */
 export function nearestRoad(x: number, z: number, maxDist = 30, filter?: (e: RoadEdge) => boolean): RoadHit | null {
   let best: RoadHit | null = null;

@@ -3,7 +3,7 @@ import {
 } from '../data/map';
 import { clamp, dist, lerp, projectSegment, smoothstep, worldToLocal } from '../sim/geo';
 import { fbm, ridged } from './noise';
-import { EDGES, nearestRoad, type RoadEdge } from './roads';
+import { EDGES, inRoadCorridor, nearestRoad, type RoadEdge } from './roads';
 
 // Pure terrain model. Heights live on a 4 m grid; heightAt() interpolates the
 // exact triangles the renderer draws, so wheels and feet sit on the mesh.
@@ -384,10 +384,9 @@ export function groundAt(x: number, z: number): Ground {
 
 /** Is a spot free of roads, pads, buildings, sites and water? (prop scattering) */
 export function isOpenGround(x: number, z: number, margin: number): boolean {
-  if (roadDistance(x, z) < 6 + margin) {
-    const hit = nearestRoad(x, z, 14 + margin);
-    if (hit && hit.dist < hit.edge.def.width / 2 + 3 + margin) return false;
-  }
+  // roadDistance() is a coarse 16 m field (road samples snap to grid nodes) that can be off by ~25 m, so it
+  // only skips the exact check far from every road; a tight gate let trees grow on road shoulders
+  if (roadDistance(x, z) < 34 + margin && inRoadCorridor(x, z, 3 + margin)) return false;
   for (const pk of PARKING) {
     const [lx, lz] = worldToLocal(x, z, pk.x, pk.z, pk.rot);
     if (Math.abs(lx) <= pk.w / 2 + margin + 2 && Math.abs(lz) <= pk.l / 2 + margin + 2) return false;

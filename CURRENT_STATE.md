@@ -8,6 +8,9 @@ Playable vertical slice in active development. Live build: https://nolancasama.g
 (GitHub Pages, deployed by `.github/workflows/pages.yml` on every push to `main`; the workflow runs the unit
 tests before building). Repo: https://github.com/nolancasama/rolling-home (public).
 
+**Target:** desktop browsers with a decent GPU; visual quality over low-end performance. Not optimized for
+Chromebooks (that constraint is for the ESL classroom games only). High is the default graphics preset.
+
 ## What Exists
 
 **Simulation (pure TS, `src/sim`, `src/data`, `src/world`)**
@@ -48,7 +51,8 @@ tests before building). Repo: https://github.com/nolancasama/rolling-home (publi
 - `window.__rh` test API (snapshot, teleport, act, autodrive/speedRun with real physics, furnishing helpers).
 
 **Verification**
-- `npm test`: 32 Vitest tests (terrain, simulation, vehicle physics). Run in CI before every deploy.
+- `npm test`: 33 Vitest tests (terrain incl. road clearance for props, simulation, vehicle physics). Run in CI
+  before every deploy.
 - `npm run acceptance`: Playwright harness (`acceptance/run.mjs`, follows `~/.claude/workers/harness/PROTOCOL.md`)
   driving the real game in Chromium at 1366×768. 12 sections / 39 checks covering the plan's 30-step loop
   (startup → explore → interior → shopping → cargo → driving → delivery → camping → living → furnishing →
@@ -68,18 +72,19 @@ RV Status axle bars match the diagram order.
 
 ## Known Issues
 
-- Traffic cars are plain low-poly boxes when seen up close (in keeping with the style; cosmetic).
-- Real Chromebook GPU performance not measured. Desktop Chromium, low preset, 1366×768: ~2 ms CPU per frame,
-  9–12 ms with 4× CPU throttling (still 60 fps); worst view ~0.9 M triangles / ~210 draw calls (Pine Lake).
+- Traffic cars are plain low-poly boxes when seen up close (cosmetic).
+- Performance reference (dev desktop, Chromium, High preset): 60 fps, ~2 ms CPU per frame; heaviest view
+  ~2.0 M triangles / ~280 draw calls (Pine Lake). Plenty of headroom for richer visuals.
 - Bundle is ~1 MB (286 KB gzip); Vite warns about chunk size. Fine for now.
 - Graphics quality changes apply only after reload.
 - Pedestrians/NPCs are simple; no walkable shop interiors (by design for the MVP).
 
 ## Next Steps
 
-1. Try the live build on a real school Chromebook (low preset); if slow, reduce vegetation density/draw
-   distance on low first.
-2. Town dressing where sparse (truck stop, Mesa City side streets); rounder traffic car models.
+1. High-end visual upgrades for the High preset: real lights for street lamps and campfires, softer and
+   longer-range shadows, post-processing (bloom for night lights, ambient occlusion), denser vegetation and a
+   longer view distance; review at 1920×1080 and 2560×1440.
+2. Town dressing where sparse (truck stop, Mesa City side streets); more detailed traffic car models.
 3. A hands-on playtest of the first in-game day by a person (onboarding clarity, pacing, prices).
 4. Re-run `npm run acceptance` after gameplay changes (use `--only <section>` while iterating).
 

@@ -39,7 +39,7 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
   *Why:* a compact, lively region beats long empty roads, and the core loop has to be testable in one sitting.
 - **Physics.** Custom arcade vehicle (bicycle model + grip limit + grade/drag/rolling resistance) and 2D
   oriented-box collision with height ranges instead of a physics engine. *Why:* "approachable, not hardcore",
-  deterministic, light on Chromebook-class GPUs. Rejected: Rapier/cannon (WASM size, tuning cost).
+  deterministic and cheap to tune. Rejected: Rapier/cannon (WASM size, tuning cost).
 - **Shops and buildings.** Doors open functional shop/service screens; the RV is the only walkable interior in
   the MVP. *Why:* walkable shop interiors multiply modeling work without adding decisions.
 - **Furnishing validation** is a 2D floor-plan model in vehicle space: footprints, per-item access zones, a
@@ -107,7 +107,8 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
   bulkhead. Walking forward into either cab steps down and crouches under the headliner and mirror.
 - **Night is a readable, stylized moonlit blue**, not physically dark: moon key light 0.4 and sky fill 0.85
   (previously ~1/45 of daylight, too dark to drive). Street lamps get additive ground light pools instead of
-  real point lights. *Rejected:* dozens of real lamp lights (too costly on Chromebook-class GPUs).
+  real point lights. *Not done yet:* real lamp lights (dozens of point lights); worth revisiting for the High
+  preset now that desktop is the target (see below).
 - **Cargo loading opens on a suggestion that fits** (the Auto-arrange result; the button sits at the top of the
   crate list). Fridges are offered only for keep-cold crates. *Why:* the old default put every crate in the
   top-ranked compartment, so the very first delivery opened all red with the fix scrolled out of view at
@@ -115,6 +116,12 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
 - **Distance culling:** instanced vegetation/rock tiles entirely beyond the fog are hidden each frame (no visual
   change). Terrain chunks are not culled or LOD'd: fully fogged distant terrain forms the hazy skyline
   silhouettes, and chunk LOD would open seam cracks against the sky.
+
+- **Target hardware: desktop, visual quality first** (user decision). Rolling Home is not optimized for
+  Chromebooks; the user prefers higher-end graphics for the visual experience. High is the default graphics
+  preset; Medium/Low stay as fallbacks for weaker machines. *Rejected:* tuning for school Chromebooks
+  (that constraint belongs to the ESL classroom games, not this project). Earlier cost-driven choices (no
+  real lamp lights, short shadow range, no post-processing) are open to revisit for High.
 
 ### Architecture
 - `src/data` (content), `src/sim` (rules + state) and `src/world` (terrain/road/collider model) are pure TS:

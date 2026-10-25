@@ -8,7 +8,7 @@ const out = process.argv[2] ?? '.tmp/shots';
 const scenario = process.argv[3] ?? 'basic';
 fs.mkdirSync(out, { recursive: true });
 const url = process.env.RH_URL ?? 'http://localhost:5190/';
-const W = Number(process.env.RH_W ?? 1366), H = Number(process.env.RH_H ?? 768);
+const W = Number(process.env.RH_W ?? 1920), H = Number(process.env.RH_H ?? 1080);
 
 const browser = await chromium.launch({ args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });

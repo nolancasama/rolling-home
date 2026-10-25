@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LAKE, NODE_BY_ID, PLACES } from '../src/data/map';
-import { EDGES, nearestRoad, routeTo } from '../src/world/roads';
-import { buildHeights, groundAt, profileAt, roadProfile, terrainHeight } from '../src/world/terrain';
+import { EDGES, nearestRoad, pointAlong, routeTo } from '../src/world/roads';
+import { buildHeights, groundAt, isOpenGround, profileAt, roadProfile, terrainHeight } from '../src/world/terrain';
 
 describe('terrain model', () => {
   it('builds the height grid in reasonable time', () => {
@@ -46,6 +46,21 @@ describe('terrain model', () => {
     expect(terrainHeight(e.xs[i], e.zs[i])).toBeLessThan(g.y);
     const hit = nearestRoad(e.xs[i] + 0.5, e.zs[i], 10);
     expect(hit?.edge.def.id).toBe('hwy60_w');
+  });
+
+  it('never offers road corridors as open ground for trees and rocks', () => {
+    // trees used to grow on shoulders where the coarse road-distance field overestimated
+    const bad: string[] = [];
+    for (const e of EDGES) {
+      for (let a = 0; a < e.length; a += 4) {
+        const p = pointAlong(e, a);
+        for (const k of [-1, -0.5, 0, 0.5, 1]) {
+          const off = k * (e.def.width / 2 + 2.5);
+          if (isOpenGround(p.x - p.dz * off, p.z + p.dx * off, 1.5)) bad.push(`${e.def.id}@${a.toFixed(0)}m offset ${off.toFixed(1)}`);
+        }
+      }
+    }
+    expect(bad.slice(0, 8), `${bad.length} open points on roads`).toEqual([]);
   });
 
   it('routes between towns, respecting narrow tracks', () => {
