@@ -27,7 +27,9 @@ export class Input {
       const k = norm(e.code);
       if (!this.down.has(k)) this.pressed.add(k);
       this.down.add(k);
-      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) e.preventDefault();
+      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Alt'].includes(k)) e.preventDefault();
+      // editor shortcuts (Ctrl+D would bookmark the page)
+      if (e.ctrlKey && ['D', 'Z', 'Y'].includes(k)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
       const k = norm(e.code);
@@ -38,7 +40,7 @@ export class Input {
     window.addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
-      if (this.pointerLocked || (this.dragLook && this.mouseButtons.has(2))) {
+      if (this.pointerLocked || (this.dragLook && (this.mouseButtons.has(2) || this.mouseButtons.has(1)))) {
         this.mouseDX += e.movementX;
         this.mouseDY += e.movementY;
       }
@@ -46,6 +48,7 @@ export class Input {
     canvas.addEventListener('mousedown', (e) => {
       this.mouseButtons.add(e.button);
       this.clicked.add(e.button);
+      if (e.button === 1) e.preventDefault(); // middle-drag pans; no autoscroll
     });
     window.addEventListener('mouseup', (e) => this.mouseButtons.delete(e.button));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -122,5 +125,6 @@ function norm(code: string): string {
   if (code.startsWith('Digit')) return code.slice(5);
   if (code === 'ShiftLeft' || code === 'ShiftRight') return 'Shift';
   if (code === 'ControlLeft' || code === 'ControlRight') return 'Control';
+  if (code === 'AltLeft' || code === 'AltRight') return 'Alt';
   return code;
 }

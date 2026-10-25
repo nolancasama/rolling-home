@@ -9,6 +9,7 @@ import { EDGE_BY_ID, pointAlong, routeTo, type Route } from '../world/roads';
 import type { Game } from '../game/game';
 import { worldTargets } from '../game/interactions';
 import type { Finish, WindowTreatment } from '../data/types';
+import { designApi } from './designApi';
 
 // Automation/test hooks on window.__rh. Used by the acceptance harness; harmless in play.
 
@@ -139,7 +140,8 @@ export function installTestApi(game: Game) {
       game.interior.lz = z;
       game.interior.yaw = yaw;
     },
-    setMode: (m: 'explore' | 'interior' | 'drive' | 'furnish') => game.setMode(m),
+    // 'furnish' is the old name of Design Mode, kept for older harness scripts.
+    setMode: (m: 'explore' | 'interior' | 'drive' | 'design' | 'furnish') => game.setMode(m === 'furnish' ? 'design' : m),
     setTraffic(on: boolean) {
       for (const c of game.world.traffic.cars) {
         c.mesh.visible = on;
@@ -215,12 +217,19 @@ export function installTestApi(game: Game) {
       const pt = pointAlong(e, along);
       return { x: pt.x + -pt.dz * 1.8, z: pt.z + pt.dx * 1.8, heading: Math.atan2(pt.dx, pt.dz) };
     },
+    design: designApi(game),
+    /** Old furnishing helpers mapped onto Design Mode (placing applies to the draft; done() confirms it). */
     furnish: {
-      startMove: (uid: string) => game.furnish.startMove(uid),
-      moveTo: (x: number, z: number, rot?: number) => game.furnish.moveTo(x, z, rot),
-      issues: () => game.furnish.moving?.issues.map((i) => i.text) ?? [],
-      place: () => game.furnish.place(),
-      done: () => game.furnish.done(),
+      startMove: (uid: string) => game.design.startOwned(uid),
+      moveTo: (x: number, z: number, rot?: number) => game.design.moveCandidate(x, z, rot),
+      issues: () => game.design.session?.issues.filter((i) => i.severity === 'block').map((i) => i.text) ?? [],
+      place: () => game.design.place(),
+      done: () => {
+        if (game.mode !== 'design') return true;
+        if (game.design.summary().changed) return game.design.confirm().ok;
+        game.setMode('interior');
+        return true;
+      },
     },
     ...(import.meta.env.DEV ? { dev: {
       setSurface(id: string, finish: Finish) {

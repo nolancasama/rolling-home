@@ -14,7 +14,8 @@ import {
   serviceScreen, waterScreen,
 } from './services';
 import { shopScreen } from './shop';
-import { furnishPanel } from './furnishPanel';
+import { designPanel } from './design/designPanel';
+import { designReview } from './design/review';
 
 /** One place to open any screen. */
 export class ScreenHub {
@@ -33,9 +34,8 @@ export class ScreenHub {
       g.ui.close();
       return;
     }
-    if (g.mode === 'furnish') {
-      if (g.furnish.moving) g.furnish.cancelMove();
-      else g.furnish.done();
+    if (g.mode === 'design') {
+      g.design.escape();
       return;
     }
     if (g.mode !== 'menu' && !top) this.pause();
@@ -76,7 +76,8 @@ export class ScreenHub {
   storage(comp: string) { storageScreen(this.g, comp); }
   remoteWork(atTable: boolean) { remoteWorkScreen(this.g, atTable); }
   pretrip(go: () => void, back: () => void) { pretripScreen(this.g, go, back); }
-  furnishPanel() { furnishPanel(this.g); }
+  designPanel() { designPanel(this.g); }
+  designReview() { designReview(this.g); }
   confirm(title: string, text: string, ok: () => void, label?: string) { confirmScreen(this.g, title, text, ok, label); }
   timed(fn: () => Result<{ minutes: number }>, caption: string) { timed(this.g, fn, caption); }
 

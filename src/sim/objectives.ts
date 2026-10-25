@@ -20,7 +20,7 @@ export const OBJECTIVES: ObjectiveDef[] = [
   { id: 'campsite', title: 'Find a campsite', hint: 'Campground offices rent sites. Free spots exist too, if you know where to look.' },
   { id: 'hookups', title: 'Connect utilities', hint: 'Park on your reserved pad, then press E at the hookup pedestal.' },
   { id: 'dump', title: 'Empty your waste tanks', hint: 'Use a dump station with your RV parked next to it.' },
-  { id: 'upgrade', title: 'Earn money and buy an upgrade', hint: 'Furniture, solar, batteries, mattresses... install them in furnishing mode (F).' },
+  { id: 'upgrade', title: 'Earn money and buy an upgrade', hint: 'Furniture, solar, batteries, mattresses... install them in Design Mode (F).' },
 ];
 
 export function complete(s: GameState, id: string): void {

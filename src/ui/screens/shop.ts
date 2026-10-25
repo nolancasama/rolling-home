@@ -121,7 +121,7 @@ export function shopScreen(g: Game, shopId: string) {
           }
         }, 'teal', 'buy-btn', !pv.ok || (heavy && !st.confirmHeavy)),
       ),
-      d.floor || d.slot ? h('p', { class: 'small muted' }, 'Install it from inside your RV in furnishing mode (press F).') : null,
+      d.floor || d.slot ? h('p', { class: 'small muted' }, 'Place it from inside your RV in Design Mode (press F).') : null,
     );
   };
   const sellPanel = (): Child => {
@@ -135,7 +135,7 @@ export function shopScreen(g: Game, shopId: string) {
           if (!r.ok) g.ui.toast({ text: r.reason, kind: 'bad' });
           else g.audio.cash();
         }, 'small', `sell-${it.def}`, val <= 0));
-    }) : h('p', { class: 'muted' }, 'Nothing to sell. (Uninstall furniture in furnishing mode first.)'));
+    }) : h('p', { class: 'muted' }, 'Nothing to sell. (Take furniture out in Design Mode first, or sell it from the review there.)'));
   };
   const vehiclesPanel = (): Child => {
     const s = g.sim!.s;

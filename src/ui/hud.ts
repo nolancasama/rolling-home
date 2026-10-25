@@ -71,14 +71,14 @@ export class Hud {
     const s = sim.s;
     const v = activeVehicle(s);
     const mode = g.mode;
-    const furnishing = mode === 'furnish';
+    const furnishing = mode === 'design';
     const driving = mode === 'drive';
     // time
     this.show(this.time, !furnishing);
     (this.time.children[0] as HTMLElement).textContent = fmtClock(s.time.minutes);
     (this.time.children[1] as HTMLElement).textContent = `Day ${dayOf(s.time.minutes)} · ${WEEKDAYS[weekdayOf(s.time.minutes)]}`;
     this.show(this.cash, !furnishing);
-    this.cash.textContent = money(s.cash);
+    this.cash.textContent = s.gameType === 'creative' ? 'Creative' : money(s.cash);
     this.cash.classList.toggle('neg', s.cash < 0);
     // place name flash
     const px = mode === 'explore' ? g.explore.x : g.phys!.x;
@@ -179,7 +179,7 @@ export class Hud {
       this.show(this.gps, false);
       this.show(this.park, false);
       this.show(this.hint, mode === 'explore' || mode === 'interior');
-      this.hint.textContent = mode === 'interior' ? 'WASD move · mouse look · E interact · F furnish · Tab phone · Esc pause' : 'WASD move · Shift run · mouse look · E interact · Tab phone · M map · Esc pause';
+      this.hint.textContent = mode === 'interior' ? 'WASD move · mouse look · E interact · F design · Tab phone · Esc pause' : 'WASD move · Shift run · mouse look · E interact · Tab phone · M map · Esc pause';
     }
     if (this.miniT <= 0 && !this.mini.classList.contains('hidden')) {
       this.miniT = 0.2;

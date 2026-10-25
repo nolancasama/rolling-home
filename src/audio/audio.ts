@@ -198,7 +198,7 @@ export class AudioEngine {
     }
     // ambience
     if (this.wind) {
-      const inside = g.mode === 'interior' || g.mode === 'furnish';
+      const inside = g.mode === 'interior' || g.mode === 'design';
       const forest = plateauMask(g.focus.x, g.focus.z);
       this.wind.gain.gain.setTargetAtTime(inside ? 0.01 : 0.03 + 0.03 * Math.sin(t * 0.15) ** 2 + forest * 0.02, t, 0.5);
       this.wind.filter.frequency.setTargetAtTime(inside ? 250 : 420 + 200 * Math.sin(t * 0.21), t, 0.6);

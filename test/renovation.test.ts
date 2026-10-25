@@ -118,7 +118,10 @@ describe('renovation draft operations', () => {
     good(renovation.setState(d, table, 'open'));
     good(renovation.setState(d, table, 'folded'));
     assertRefusedUnchanged(d, () => renovation.setConfig(d, uidOf(s, 'agm_battery'), {}));
-    assertRefusedUnchanged(d, () => renovation.setConfig(d, cabinet, { w: .6, h: .55, d: .6 }));
+    // Deepening keeps the back on the wall; widening into a neighbor is refused.
+    good(renovation.setConfig(d, cabinet, { w: .6, h: .55, d: .6 }));
+    good(renovation.addFromCatalog(d, 'plant', floor(.95, -.55, 0)));
+    assertRefusedUnchanged(d, () => renovation.setConfig(d, cabinet, { w: .9, h: .55, d: .6 }));
     assertRefusedUnchanged(d, () => renovation.setFinish(d, { surface: 'floor.living' }, { mat: 'win_blackout' }));
     assertRefusedUnchanged(d, () => renovation.setFinish(d, { uid: cabinet, slot: 'missing' }, { mat: 'paint_satin' }));
     assertRefusedUnchanged(d, () => renovation.setWindow(d, 'D1', roller()));
@@ -509,5 +512,17 @@ describe('complete renovation scenario and seeded editing session', () => {
     const w = computeWeight(s, s.vehicleId);
     expect(w.total).toBeCloseTo(quote.weightAfter.total, 2);
     expect(w.total).toBeCloseTo(massOfParts(s), 8);
+  });
+});
+
+describe('resizing new cabinets', () => {
+  it('keeps a wall-backed cabinet against its wall when its depth changes', () => {
+    const s = empty(), d = renovation.begin(s, s.vehicleId);
+    const l = VEHICLES.classc.interior.living;
+    const uid = good(renovation.addFromCatalog(d, 'cab_base', floor(l.x1 - 0.275, -0.5, 3), { config: { w: 0.6, h: 0.9, d: 0.55 } })).uid;
+    good(renovation.setConfig(d, uid, { w: 0.6, h: 0.9, d: 0.4 }));
+    const where = d.s.items[uid].where as Extract<GameState['items'][string]['where'], { kind: 'floor' }>;
+    expect(where.x).toBeCloseTo(l.x1 - 0.2, 6);
+    expect(where.z).toBeCloseTo(-0.5, 6);
   });
 });

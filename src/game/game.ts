@@ -26,7 +26,7 @@ import { Hud } from '../ui/hud';
 import { CollisionWorld, type BoxCollider } from './collision';
 import { DriveMode } from './drive';
 import { ExploreMode } from './explore';
-import { FurnishMode } from './furnish';
+import { DesignMode } from './design/designMode';
 import { Input } from './input';
 import { InteriorMode } from './interior';
 import { loadSettings, qualityParams, readSlot, saveSettings, writeSlot, type Settings, type SlotId } from './settings';
@@ -36,7 +36,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { configureMaterialAnisotropy, setInteriorEnvironment } from '../render/materials';
 import { InteriorPost } from '../render/interiorPost';
 
-export type ModeId = 'menu' | PlayerMode | 'furnish';
+export type ModeId = 'menu' | PlayerMode | 'design';
 
 export interface Mode {
   enter(from: ModeId): void;
@@ -67,7 +67,7 @@ export class Game {
   explore: ExploreMode;
   interior: InteriorMode;
   drive: DriveMode;
-  furnish: FurnishMode;
+  design: DesignMode;
   route: Route | null = null;
   routeDest: string | null = null;
   focus = new THREE.Vector3();
@@ -114,8 +114,8 @@ export class Game {
     this.explore = new ExploreMode(this);
     this.interior = new InteriorMode(this);
     this.drive = new DriveMode(this);
-    this.furnish = new FurnishMode(this);
-    this.modes = { explore: this.explore, interior: this.interior, drive: this.drive, furnish: this.furnish };
+    this.design = new DesignMode(this);
+    this.modes = { explore: this.explore, interior: this.interior, drive: this.drive, design: this.design };
     this.hud = new Hud(this);
     this.screens = new ScreenHub(this);
     window.addEventListener('resize', () => this.resize());
@@ -151,7 +151,7 @@ export class Game {
     this.audio.setVolumes(this.settings);
   }
 
-  // ───────────── menu backdrop ─────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ menu backdrop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private menuChair: THREE.Object3D | null = null;
 
@@ -187,7 +187,7 @@ export class Game {
     mv.update(dt, 0, 0, false, false);
   }
 
-  // ───────────── game lifecycle ─────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ game lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   startNew(opts: NewGameOptions) {
     this.attach(new Sim(newGame(opts)));
@@ -264,15 +264,16 @@ export class Game {
     this.vv.setPose(p.x, p.y, p.z, p.heading, p.visPitch || p.pitch, p.visRoll || p.roll);
     const d = this.phys.def.dims;
     CollisionWorld.moveBox(this.vehCollider, p.x, p.z, p.heading, p.y + 0.2, p.y + d.height);
-    const s = this.sim.s;
+    // While designing, the vehicle shows the draft (nothing is real until it is confirmed).
+    const s = this.mode === 'design' && this.design.draft ? this.design.draft.s : this.sim.s;
     const night = this.world.sky.daylight < 0.35;
     const lights = this.mode === 'drive' ? this.drive.lightsOn(night) : false;
-    const inside = this.mode === 'interior' || this.mode === 'furnish';
+    const inside = this.mode === 'interior' || this.mode === 'design';
     const day = this.world.sky.daylight;
     const cockpit = this.mode === 'drive' && this.drive.cam === 'cockpit';
     const fill = cockpit ? 0.5 + 2.2 * day : this.mode === 'interior' ? .65 * day : 0;
     this.vv.update(dt, this.mode === 'drive' ? p.speed : 0, p.steerAngle, lights, this.mode === 'drive' && this.drive.braking, fill);
-    this.vv.updateInterior(dt, s, this.camera.position, inside, this.previewMinutes ?? s.time.minutes, this.settings.quality === 'high', this.world.sky.daylight);
+    this.vv.updateInterior(dt, s, this.camera.position, inside, this.previewMinutes ?? this.sim.s.time.minutes, this.settings.quality === 'high', this.world.sky.daylight);
   }
 
   setMode(m: ModeId, opts: { quiet?: boolean } = {}) {
@@ -281,7 +282,7 @@ export class Game {
     this.mode = m;
     if (m !== 'menu') {
       this.modes[m].enter(prev);
-      if (this.sim && m !== 'furnish') this.sim.setMode(m);
+      if (this.sim && m !== 'design') this.sim.setMode(m);
     }
     this.input.endFrame();
     void opts;
@@ -325,13 +326,13 @@ export class Game {
     if (this.mode === 'interior') this.interior.writeState();
   }
 
-  /** Time is frozen while menus, the phone (except while driving) or furnishing are open. */
+  /** Time is frozen while menus, the phone (except while driving) or Design Mode are open. */
   timeFrozen(): boolean {
-    if (!this.sim || this.mode === 'menu' || this.mode === 'furnish') return true;
+    if (!this.sim || this.mode === 'menu' || this.mode === 'design') return true;
     return this.ui.pausing;
   }
 
-  // ───────────── assisted travel & sleep transitions ─────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ assisted travel & sleep transitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async assistedTravel(destNode: string, label: string) {
     if (!this.sim) return;
@@ -368,7 +369,7 @@ export class Game {
     else this.save('auto');
   }
 
-  // ───────────── loop ─────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private loop() {
     const now = performance.now();
@@ -400,9 +401,9 @@ export class Game {
     }
     // global keys
     if (this.input.rawPressed('Escape')) this.screens.escape();
-    else if (this.input.rawPressed('Tab') && this.mode !== 'furnish') this.screens.togglePhone();
+    else if (this.input.rawPressed('Tab') && this.mode !== 'design') this.screens.togglePhone();
     else if (this.input.wasPressed('H')) this.hudHidden = !this.hudHidden;
-    else if (this.input.wasPressed('M') && this.mode !== 'furnish') this.screens.openPhone('map');
+    else if (this.input.wasPressed('M') && this.mode !== 'design') this.screens.openPhone('map');
     const mode = this.modes[this.mode];
     mode.update(dt);
     // time

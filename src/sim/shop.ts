@@ -200,7 +200,7 @@ export function sellableItems(s: GameState): ItemInstance[] {
 export function sell(s: GameState, shopId: string, uid: string): Result<{ amount: number }> {
   const inst = s.items[uid];
   if (!inst) return fail('Item not found.');
-  if (inst.where.kind !== 'stored') return fail('Uninstall it first (furnishing mode), then sell it from storage.');
+  if (inst.where.kind !== 'stored') return fail('Take it out in Design Mode first, then sell it from storage.');
   const val = sellValue(s, shopId, inst);
   if (val <= 0) return fail('The shop will not buy that.');
   // anything stored inside? stored items are never containers (only floor items have storage)

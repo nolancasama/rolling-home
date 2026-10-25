@@ -193,7 +193,7 @@ export class InteriorMode implements Mode {
       } else g.screens.actionMenu(this.current.label, acts);
       g.audio.click();
     }
-    if (!g.ui.blocking && inp.wasPressed('F')) g.setMode('furnish');
+    if (!g.ui.blocking && inp.wasPressed('F')) g.setMode('design');
   }
 
   private pick() {
@@ -221,7 +221,7 @@ export class InteriorMode implements Mode {
     if (best) {
       const acts = best.actions.filter((a) => !a.hidden);
       g.ui.setPrompt('E', acts.length === 1 ? acts[0].label : best.label, acts.length === 1 && acts[0].disabled ? acts[0].disabled : acts.length > 1 ? `${acts.length} options` : '');
-    } else g.ui.setPrompt('F', 'Furnishing mode', 'Tab: phone · E: interact');
+    } else g.ui.setPrompt('F', 'Design Mode', 'Renovate and furnish · Tab: phone · E: interact');
   }
 
   interact(): boolean {

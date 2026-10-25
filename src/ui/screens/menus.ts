@@ -205,9 +205,10 @@ export function settingsScreen(g: Game) {
 export function controlsScreen(g: Game) {
   const rows: [string, string][] = [
     ['W A S D', 'Walk / drive'], ['Shift', 'Run'], ['Mouse', 'Look around (click the view first)'], ['E', 'Interact / get out of the driver’s seat'],
-    ['Tab', 'Phone (GPS only while driving)'], ['M', 'Map'], ['F', 'Furnishing mode (inside, parked)'], ['C', 'Chase / cockpit camera'],
-    ['L', 'Headlights auto / on / off'], ['Space', 'Brake hard'], ['Q', 'Look back (driving) · rotate view (furnishing)'], ['I', 'From the driver’s seat to the living area'],
-    ['R', 'Rotate item (furnishing)'], ['Del', 'Store selected item (furnishing)'], ['H', 'Hide / show HUD'], ['Esc', 'Pause / close'],
+    ['Tab', 'Phone (GPS only while driving)'], ['M', 'Map (Design Mode: measure)'], ['F', 'Design Mode: renovate and furnish (inside, parked)'], ['C', 'Chase / cockpit camera'],
+    ['L', 'Headlights auto / on / off'], ['Space', 'Brake hard'], ['Q / E', 'Look back (driving) · orbit the view (Design Mode)'], ['I', 'From the driver’s seat to the living area'],
+    ['R', 'Rotate piece (Design Mode)'], ['Del', 'Take out the selected piece (Design Mode)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo (Design Mode)'], ['Ctrl+D', 'Duplicate (Design Mode)'],
+    ['1 / 2 / 3', 'Walls up / cutaway / down (Design Mode)'], ['T · V · N', 'Top view · walk through · light preview (Design Mode)'], ['H', 'Hide / show HUD'], ['Esc', 'Pause / close'],
   ];
   g.ui.open(modal(g.ui, 'controls', {
     title: 'Controls', size: 'narrow',

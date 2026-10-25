@@ -229,3 +229,21 @@ work orders, the durable decisions are here.
 - Microwave meals retain the existing sink, kitchenware and washing-water requirements, replacing stove fuel,
   cooking duration and electrical consumption. Blocked convertible sleeping returns a zero-minute summary with
   `ok: false` and `reason`, preserving the existing summary fields for callers.
+
+### Design Mode editor (S2-S5)
+- **Pricing of new purchases:** a non-default finish on a new item costs only its material premium (no
+  refinishing labor), and countertops are already in the item's price. Refinishing labor applies to owned pieces.
+  *Rejected:* billing every chosen finish as a refinishing job (it double-charged new cabinets).
+- **Edits that cut something off are refused at once** ("Would block the way to Double bed frame.") instead of
+  being allowed and only blocking the confirm. Problems that existed before an edit (e.g. after applying a
+  blueprint) do not refuse unrelated edits.
+- **Wall pieces face the room.** Wall-backed and wall-hung items snap to the nearest wall and turn to face into
+  the room; R does not rotate them (drag them to another wall). Resizing a new cabinet keeps its back on its wall,
+  so a deeper cabinet grows into the room.
+- **Cutaway readability:** with the walls cut or down, pieces hung above 0.95 m (upper cabinets, shelves,
+  microwaves) turn translucent but stay clickable. *Rejected:* hiding them, which made placed uppers vanish.
+- **Done** leaves directly when nothing changed and otherwise opens the review; Discard asks first. The
+  existing furnishing acceptance section now confirms its draft before checking weight and comfort, because
+  nothing reaches the real game until the review is confirmed.
+- Default view: from behind the door side, about 0.7 × the vehicle length away; time-of-day preview drives the
+  sky and the auto-lights rule only (never the game clock).

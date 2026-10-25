@@ -795,11 +795,11 @@ S.furnishing = async (ctx) => {
   await rh(page, () => {
     window.__rh.game.ui.closeAll();
     window.__rh.setMode('interior');
-    window.__rh.setMode('furnish');
+    window.__rh.setMode('design');
   });
   let probe;
   await check(ctx, 'invalid placements are rejected', {
-    pre: async () => ({ ok: (await mode(page)) === 'furnish' && !!uid && (await visible(page, 'furnish')), observed: { mode: await mode(page), uid } }),
+    pre: async () => ({ ok: (await mode(page)) === 'design' && !!uid && (await visible(page, 'design')), observed: { mode: await mode(page), uid } }),
     action: async () => {
       probe = await rh(page, (id) => {
         const f = window.__rh.furnish;
@@ -825,16 +825,20 @@ S.furnishing = async (ctx) => {
     pre: async () => {
       w0 = (await snap(page)).weight.total;
       c0 = (await rh(page, () => window.__rh.caps())).comfort;
-      return { ok: (await mode(page)) === 'furnish' };
+      return { ok: (await mode(page)) === 'design' };
     },
     action: async () => {
+      // Design Mode edits a draft: the plant reaches the real game only when the design is confirmed.
       spot = await rh(page, () => {
         const f = window.__rh.furnish;
         const inr = window.__rh.game.phys.def.interior;
         for (let z = inr.living.z1 - 0.2; z > inr.living.z0 + 0.2; z -= 0.05) {
           for (let x = inr.living.x0 + 0.2; x < inr.living.x1 - 0.2; x += 0.05) {
             f.moveTo(+x.toFixed(2), +z.toFixed(2), 0);
-            if (!f.issues().length) return { x, z, placed: f.place() };
+            if (!f.issues().length) {
+              const placed = f.place();
+              return { x, z, placed, confirmed: placed && f.done() };
+            }
           }
         }
         return null;
@@ -844,7 +848,7 @@ S.furnishing = async (ctx) => {
       const it = await rh(page, (id) => window.__rh.state().items[id], uid);
       const w = (await snap(page)).weight.total;
       const c = (await rh(page, () => window.__rh.caps())).comfort;
-      return { ok: !!spot?.placed && it.where.kind === 'floor' && near(w, w0, 0.01) && near(c - c0, 1, 0.001), observed: { spot, where: it.where, weightDelta: +(w - w0).toFixed(3), comfortDelta: c - c0 } };
+      return { ok: !!spot?.placed && !!spot?.confirmed && it.where.kind === 'floor' && near(w, w0, 0.01) && near(c - c0, 1, 0.001), observed: { spot, where: it.where, weightDelta: +(w - w0).toFixed(3), comfortDelta: c - c0 } };
     },
   });
   await shot(ctx, 'placed');

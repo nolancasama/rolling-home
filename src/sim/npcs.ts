@@ -129,7 +129,7 @@ export function npcChoose(s: GameState, id: string, option: string): ChoiceResul
     }
     inst.where = { kind: 'stored', vehicle: v.id, comp };
     st.soldItem = true;
-    note(s, 'Bought a used lithium battery. Install it in furnishing mode (Systems tab).', 'money');
+    note(s, 'Bought a used lithium battery. Install it in Design Mode (Systems).', 'money');
     return { lines: [`"Sold! ${money(cost)}, and it is still got lots of life in it. Install it in your battery bay."`] };
   }
   if (option === 'job' && id === 'dex') {

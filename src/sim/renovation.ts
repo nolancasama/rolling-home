@@ -2,11 +2,11 @@ import { SHOPS } from '../data/content';
 import { RENOVATION } from '../data/config';
 import { itemDef } from '../data/items';
 import { COVERINGS, MATERIALS, materialDef } from '../data/materials';
-import type { Finish, ItemConfig, SlotKind, SurfaceKind, WindowTreatment } from '../data/types';
+import type { Finish, ItemConfig, SlotKind, SurfaceKind, VehicleDef, WindowTreatment } from '../data/types';
 import { charge, earn, fail, journal, money, newItem, ok, type Result } from './core';
 import { normalizeConfig } from './families';
 import { coveringArea, surfaceGeometry } from './finishes';
-import { checkLayout, doorFitIssue, layoutOf, setItemState, type PlacementIssue } from './furnish';
+import { checkLayout, doorFitIssue, footprint, layoutOf, setItemState, type PlacementIssue } from './furnish';
 import { vehicleAnchors } from './places';
 import { bestCompartment, canStore, storageSummary, whyNoRoom } from './storage';
 import type { GameState, ItemInstance, LightSettings } from './types';
@@ -224,10 +224,29 @@ export function setConfig(d: Draft, uid: string, config: ItemConfig): Result {
     const def = itemDef(it.def), vd = vdef(vehicleById(d.s, d.vid));
     if (!def.family) return fail('That item is not configurable.');
     const before = layoutCheck(d);
+    const wall = it.where.kind === 'floor' ? backWallOf(vd, it) : null;
     it.config = normalizeConfig(def, config, vd.interior.ceilingY - vd.interior.floorY);
+    // Resizing keeps a wall-backed item's back on its wall (a deeper cabinet grows into the room).
+    if (wall && it.where.kind === 'floor') {
+      const depth = defOf(it).floor!.footprint[1], l = vd.interior.living;
+      if (wall === 'left') it.where.x = l.x1 - depth / 2;
+      else if (wall === 'right') it.where.x = l.x0 + depth / 2;
+      else it.where.z = l.z0 + depth / 2;
+    }
     const door = doorFitIssue(vd, defOf(it), d.s.gameType === 'creative' && !!d.s.creativeRelaxed);
     return door?.severity === 'block' ? fail(door.text) : validateTouched(d, [uid], before);
   });
+}
+
+/** The wall a wall-backed item currently stands against, if any. */
+function backWallOf(vd: VehicleDef, it: ItemInstance): 'left' | 'right' | 'rear' | null {
+  const d = defOf(it), w = it.where;
+  if (w.kind !== 'floor' || !(d.floor?.againstWall || d.floor?.mount === 'wall')) return null;
+  const fp = footprint(d, w.x, w.z, w.rot), l = vd.interior.living, rot = ((w.rot % 4) + 4) % 4;
+  if (rot === 3 && Math.abs(fp.x1 - l.x1) <= 0.03) return 'left';
+  if (rot === 1 && Math.abs(fp.x0 - l.x0) <= 0.03) return 'right';
+  if (rot === 0 && Math.abs(fp.z0 - l.z0) <= 0.03) return 'rear';
+  return null;
 }
 export function swapMattress(d: Draft, bedUid: string, mattressDefOrUid: string): Result {
   return edit(d, () => {

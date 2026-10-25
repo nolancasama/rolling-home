@@ -35,7 +35,7 @@ export class ExploreMode implements Mode {
   enter(from: ModeId) {
     const g = this.g;
     const s = g.sim!.s;
-    if (from === 'interior' || from === 'drive' || from === 'furnish') {
+    if (from === 'interior' || from === 'drive' || from === 'design') {
       const p = from === 'drive' ? g.driverDoorOutside() : g.vehicleDoorOutside();
       this.placeFree(p.x, p.z);
       this.yaw = g.phys!.heading + (from === 'drive' ? Math.PI / 2 : -Math.PI / 2);
