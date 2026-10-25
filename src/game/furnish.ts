@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { checkPlacement, footprint, type PlacementIssue } from '../sim/furnish';
+import { checkPlacement, footprint, itemElevation, type PlacementIssue } from '../sim/furnish';
 import { clamp } from '../sim/geo';
 import { activeVehicle, defOf, itemsInVehicle, mattressOn } from '../sim/vehicle';
 import type { ItemInstance } from '../sim/types';
@@ -184,11 +184,12 @@ export class FurnishMode implements Mode {
     const g = this.g;
     const m = this.moving!;
     const it = g.sim!.s.items[m.uid];
-    m.issues = checkPlacement(g.sim!.s, activeVehicle(g.sim!.s).id, { uid: m.uid, def: it.def, x: m.x, z: m.z, rot: m.rot });
+    const candidate = { uid: m.uid, def: it.def, x: m.x, z: m.z, rot: m.rot, y: it.where.kind === 'floor' ? it.where.y : undefined, config: it.config, state: it.state };
+    m.issues = checkPlacement(g.sim!.s, activeVehicle(g.sim!.s).id, candidate);
     if (this.ghost) {
-      this.ghost.position.set(m.x, g.phys!.def.interior.floorY + 0.01, m.z);
+      this.ghost.position.set(m.x, g.phys!.def.interior.floorY + itemElevation(g.phys!.def, candidate) + 0.01, m.z);
       this.ghost.rotation.y = (m.rot * Math.PI) / 2;
-      const mat = m.issues.length ? this.badMat : this.ghostMat;
+      const mat = m.issues.some((issue) => issue.severity === 'block') ? this.badMat : this.ghostMat;
       this.ghost.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = mat;
       });
@@ -201,7 +202,7 @@ export class FurnishMode implements Mode {
     const m = this.moving;
     if (!m) return false;
     this.validate();
-    if (m.issues.length) {
+    if (m.issues.some((issue) => issue.severity === 'block')) {
       g.audio.error();
       return false;
     }

@@ -1,11 +1,12 @@
 import type { DifficultyId } from '../data/difficulty';
-import type { ComponentId, SlotKind, VehicleId } from '../data/types';
+import type { ComponentId, SlotKind, VehicleId, ItemConfig, Finish, WindowTreatment } from '../data/types';
 
 // The whole game is one plain JSON-serializable object.
 
 export type Where =
   | { kind: 'stored'; vehicle: string; comp: string }
-  | { kind: 'floor'; vehicle: string; x: number; z: number; rot: number }
+  | { kind: 'floor'; vehicle: string; x: number; z: number; rot: number; y?: number }
+  | { kind: 'removed'; vehicle: string; sell: boolean }
   | { kind: 'slot'; vehicle: string; slot: SlotKind }
   | { kind: 'mattress'; vehicle: string; bed: string }
   | { kind: 'locker' }
@@ -26,6 +27,13 @@ export interface CargoInfo extends CrateSpec {
   damage: number;
 }
 
+export interface LightSettings {
+  mode: 'auto' | 'on' | 'off';
+  dim: number;
+  kelvin: number;
+  color?: string;
+}
+
 export interface ItemInstance {
   uid: string;
   def: string;
@@ -42,11 +50,16 @@ export interface ItemInstance {
   cargo?: CargoInfo;
   /** Switchable equipment (fan, lights). */
   on?: boolean;
+  config?: ItemConfig;
+  finish?: Record<string, Finish>;
+  state?: string;
+  light?: LightSettings;
 }
 
 export interface VehicleState {
   id: string;
   def: VehicleId;
+  custom: { surfaces: Record<string, Finish>; windows: Record<string, WindowTreatment> };
   pose: { x: number; z: number; heading: number };
   fuel: number;
   fresh: number;
@@ -199,6 +212,8 @@ export interface NpcState {
 
 export interface GameState {
   version: number;
+  gameType: 'life' | 'creative';
+  creativeRelaxed?: boolean;
   seed: number;
   difficulty: DifficultyId;
   time: { minutes: number };

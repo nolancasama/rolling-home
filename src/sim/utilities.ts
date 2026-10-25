@@ -2,8 +2,8 @@ import { POWER, PROPANE } from '../data/config';
 import { difficulty, fail, note, ok, type Result } from './core';
 import { hourOf } from './core';
 import { sunAt } from './places';
-import type { GameState, VehicleState } from './types';
-import { capacities, compartments, defOf, itemsInCompartment, vdef, type Capacities } from './vehicle';
+import type { GameState, LightSettings, VehicleState } from './types';
+import { capacities, compartments, defOf, installedItems, itemsInCompartment, type Capacities } from './vehicle';
 
 // RV utility flows. Water moves between tanks liter for liter; electricity is
 // integrated in watt-hours; propane in kilograms.
@@ -70,6 +70,56 @@ export interface PowerContext {
   sleeping?: boolean;
 }
 
+export interface FixtureContext {
+  hour: number;
+  occupied?: boolean;
+  sleeping?: boolean;
+  awning?: boolean;
+  exterior?: boolean;
+}
+
+/** Shared with the renderer: switching a fixture on keeps it on while away. */
+export function fixtureLit(settings: Pick<LightSettings, 'mode'> | undefined, ctx: FixtureContext): boolean {
+  const mode = settings?.mode ?? 'auto';
+  if (mode === 'off') return false;
+  if (mode === 'on') return true;
+  const hour = ((ctx.hour % 24) + 24) % 24;
+  const dark = hour >= 18.5 || hour < 6.5;
+  return dark && (ctx.exterior ? !!ctx.awning : !!ctx.occupied && !ctx.sleeping);
+}
+
+export function fixtureLoad(s: GameState, v: VehicleState, ctx: PowerContext = {}, hour = hourOf(s.time.minutes)): number {
+  let watts = 0;
+  for (const it of installedItems(s, v.id)) {
+    const light = defOf(it).light;
+    if (light && fixtureLit(it.light, { ...ctx, hour, awning: v.awning, exterior: light.kind === 'exterior' })) {
+      watts += light.watts * (light.dimmable ? Math.max(0.1, Math.min(1, it.light?.dim ?? 1)) : 1);
+    }
+  }
+  return watts;
+}
+
+export function setLight(s: GameState, vid: string, uid: string, settings: Partial<LightSettings>): Result {
+  const it = s.items[uid];
+  if (!it || !installedItems(s, vid).some((x) => x.uid === uid)) return fail('That fixture is not installed in this RV.');
+  const light = defOf(it).light;
+  if (!light) return fail('That item is not a light fixture.');
+  if (settings.mode != null && !['auto', 'on', 'off'].includes(settings.mode)) return fail('Choose auto, on or off.');
+  if ((settings.dim != null && !Number.isFinite(settings.dim)) || (settings.kelvin != null && !Number.isFinite(settings.kelvin))) return fail('Light settings must be finite numbers.');
+  const next = { mode: 'auto' as const, dim: 1, kelvin: light.kelvin[0], ...it.light, ...settings };
+  next.dim = light.dimmable ? Math.max(0.1, Math.min(1, next.dim)) : 1;
+  next.kelvin = Math.max(light.kelvin[0], Math.min(light.kelvin[1], next.kelvin));
+  if (!light.rgb) delete next.color;
+  it.light = next;
+  return ok();
+}
+
+export function setAllLights(s: GameState, vid: string, mode: LightSettings['mode']): Result {
+  if (!['auto', 'on', 'off'].includes(mode)) return fail('Choose auto, on or off.');
+  for (const it of installedItems(s, vid)) if (defOf(it).light) setLight(s, vid, it.uid, { mode });
+  return ok();
+}
+
 export interface PowerStatus {
   loadW: number;
   solarW: number;
@@ -87,6 +137,7 @@ export function fridgeState(v: VehicleState, c: Capacities): PowerStatus['fridge
     if (v.propane > 0.01) return 'propane';
     return 'off';
   }
+  if (c.fridge.mode === '120v' && !(v.hookups.power || v.generatorOn) && c.inverterW < c.fridge.minInverter) return 'off';
   if (v.hookups.power || v.generatorOn || v.batteryWh > 1 || v.engineOn) return 'electric';
   return 'off';
 }
@@ -98,19 +149,23 @@ export function powerStatus(s: GameState, v: VehicleState, ctx: PowerContext = {
   const t = s.time.minutes;
   let load = POWER.parasiticW;
   const fm = fridgeState(v, c);
-  if (fm === 'electric' && c.fridge) load += c.fridge.mode === '3way' ? (v.hookups.power || v.generatorOn ? 0 : c.fridge.watts) : c.fridge.watts;
-  if (ctx.occupied && isEvening(t) && !ctx.sleeping) load += POWER.lightsW + c.lightsW;
+  if (fm === 'electric' && c.fridge) {
+    load += c.fridge.mode === '120v' ? c.fridge.watts / 0.88 : c.fridge.mode === '3way' ? (v.hookups.power || v.generatorOn ? 0 : c.fridge.watts) : c.fridge.watts;
+  }
+  load += fixtureLoad(s, v, ctx);
+  // Existing LED retrofit kits retain their additional evening draw.
+  if (ctx.occupied && isEvening(t) && !ctx.sleeping) load += c.lightsW;
   if (isNight(t) && c.fanW) load += c.fanW;
-  if (c.inverterW) load += 10;
+  if (c.inverterW) load += c.inverterIdleW;
   load += ctx.extraW ?? 0;
   load *= mul;
-  const solar = c.solarW * sunFactor(t) * sunAt(v.pose.x, v.pose.z) * POWER.solarEfficiency;
+  const solar = c.solarW * sunFactor(t) * sunAt(v.pose.x, v.pose.z) * c.solarEfficiency;
   const shore = v.hookups.power;
   let charge = solar;
   if (ctx.driving && v.engineOn) charge += POWER.alternatorW;
   if (shore || (v.generatorOn && c.generatorW > 0)) {
     // Shore/generator power runs the loads directly and charges the battery.
-    charge = POWER.chargerW + solar;
+    charge = Math.max(POWER.chargerW, c.chargerW) + solar;
     load = 0;
   }
   return { loadW: load, solarW: solar, chargeW: charge, netW: charge - load, shore, fridgeOn: fm !== 'off' && fm !== 'none', fridgeMode: fm };
@@ -155,7 +210,6 @@ export function utilitiesTick(s: GameState, v: VehicleState, dtMin: number, ctx:
     }
   }
   if (spoiledNow) note(s, `${spoiledNow} perishable item${spoiledNow > 1 ? 's' : ''} spoiled. Keep fresh food in a powered fridge.`, 'warn');
-  void vdef;
 }
 
 export function propaneUse(s: GameState, v: VehicleState, kg: number): Result {

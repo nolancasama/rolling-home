@@ -2,6 +2,9 @@ import { CARGO_DEF, itemDef, longestDim, packedLiters } from '../data/items';
 import { dFromZ, VEHICLES } from '../data/vehicles';
 import type { CompartmentDef, ItemDef, SlotKind, VehicleDef } from '../data/types';
 import type { GameState, ItemInstance, VehicleState } from './types';
+import { resolveDef } from './families';
+import { interiorAppeal } from './appeal';
+import { POWER } from '../data/config';
 
 // Vehicle-derived facts: what is installed, capacities, compartments.
 
@@ -20,7 +23,7 @@ export function vdef(v: VehicleState): VehicleDef {
 }
 
 export function defOf(inst: ItemInstance): ItemDef {
-  return inst.def === 'cargo' ? CARGO_DEF : itemDef(inst.def);
+  return inst.def === 'cargo' ? CARGO_DEF : resolveDef(itemDef(inst.def), inst);
 }
 
 export function itemsInVehicle(s: GameState, vid: string): ItemInstance[] {
@@ -161,6 +164,10 @@ export interface Capacities {
   batteryWh: number;
   solarW: number;
   inverterW: number;
+  inverterIdleW: number;
+  chargerW: number;
+  solarEfficiency: number;
+  microwave: { watts: number; minutes: number; uid: string } | null;
   boosterBars: number;
   generatorW: number;
   generatorLph: number;
@@ -169,7 +176,7 @@ export interface Capacities {
   toilet: 'cassette' | 'plumbed' | 'composting' | null;
   shower: { liters: number; heater: 'propane' | 'electric' } | null;
   outdoorShower: boolean;
-  fridge: { liters: number; mode: '12v' | '3way'; watts: number; propaneKgPerDay: number; uid: string } | null;
+  fridge: { liters: number; mode: '12v' | '3way' | '120v'; watts: number; propaneKgPerDay: number; uid: string; minInverter: number } | null;
   fanW: number;
   lightsW: number;
   awning: boolean;
@@ -190,6 +197,7 @@ export function capacities(s: GameState, vid: string): Capacities {
     black: def.tanks.black?.liters ?? 0,
     propane: def.tanks.propane?.kg ?? 0,
     batteryWh: 0, solarW: 0, inverterW: 0, boosterBars: 0, generatorW: 0, generatorLph: 0,
+    inverterIdleW: 0, chargerW: POWER.chargerW, solarEfficiency: POWER.solarEfficiency, microwave: null,
     stove: null, sink: false, toilet: null, shower: null, outdoorShower: false, fridge: null,
     fanW: 0, lightsW: 0, awning: false, comfort: def.id === 'classc' ? 4 : 1,
     bestBed: { quality: 0, uid: null, name: 'none' }, table: 0,
@@ -202,7 +210,13 @@ export function capacities(s: GameState, vid: string): Capacities {
     const working = it.condition > 0.12;
     if (f.battery) c.batteryWh += f.battery.wh * (0.55 + 0.45 * it.condition);
     if (f.solar) c.solarW += f.solar.watts * (0.6 + 0.4 * it.condition);
-    if (f.inverter) c.inverterW = Math.max(c.inverterW, f.inverter.watts);
+    if (f.inverter && working && f.inverter.watts > c.inverterW) {
+      c.inverterW = f.inverter.watts;
+      c.inverterIdleW = f.inverter.idleW;
+    }
+    if (f.charger && working) c.chargerW = Math.max(c.chargerW, f.charger.watts);
+    if (f.mppt && working) c.solarEfficiency = f.mppt.efficiency;
+    if (f.microwave && working) c.microwave = { ...f.microwave, uid: it.uid };
     if (f.booster) c.boosterBars = Math.max(c.boosterBars, f.booster.bars);
     if (f.generator && working) { c.generatorW += f.generator.watts; c.generatorLph += f.generator.fuelLph; }
     if (f.tank) c.fresh += f.tank.liters;
@@ -221,7 +235,7 @@ export function capacities(s: GameState, vid: string): Capacities {
     if (f.outdoorShower) c.outdoorShower = true;
     if (f.fridge && working && d.storage) {
       if (!c.fridge || f.fridge.liters > c.fridge.liters) {
-        c.fridge = { liters: f.fridge.liters, mode: f.fridge.mode, watts: f.fridge.watts * (it.condition < 0.35 ? 1.35 : 1), propaneKgPerDay: f.fridge.propaneKgPerDay ?? 0, uid: it.uid };
+        c.fridge = { liters: f.fridge.liters, mode: f.fridge.mode, watts: f.fridge.watts * (it.condition < 0.35 ? 1.35 : 1), propaneKgPerDay: f.fridge.propaneKgPerDay ?? 0, uid: it.uid, minInverter: d.floor?.ac?.minInverter ?? 0 };
       }
     }
     if (f.fan) c.fanW += f.fan.watts;
@@ -241,6 +255,7 @@ export function capacities(s: GameState, vid: string): Capacities {
   }
   // Composting toilets have no black tank at all.
   if (c.toilet === 'composting' && !def.tanks.black) c.black = 0;
+  c.comfort += Math.max(-1, Math.min(4, (interiorAppeal(s, vid) - 0.3) * 8));
   return c;
 }
 

@@ -1,15 +1,16 @@
 import { NPCS } from '../data/content';
 import { CAMP } from '../data/config';
 import { CAMPGROUND_BY_ID, type CampgroundDef, type SiteDef } from '../data/map';
-import { charge, dayOf, fail, hourOf, journal, money, note, ok, price, weekdayOf, type Result } from './core';
+import { bill, charge, dayOf, fail, hourOf, journal, money, note, ok, price, weekdayOf, type Result } from './core';
 import { dist } from './geo';
 import { addMood } from './needs';
 import { rngFor } from './rng';
 import { siteOfVehicle, stayOf } from './places';
 import { bestCompartment, looseUnsecured, whyNoRoom } from './storage';
 import type { GameState } from './types';
-import { activeVehicle, capacities, defOf, hasTool, itemName, vdef } from './vehicle';
+import { activeVehicle, capacities, defOf, hasTool, installedItems, itemName, vdef } from './vehicle';
 import { computeWeight, type WeightReport } from './weight';
+import { setItemState } from './furnish';
 
 // Campgrounds, reservations, hookups and the pre-trip check.
 
@@ -110,9 +111,7 @@ export function checkoutTick(s: GameState): void {
   if (hit && hit.camp.id === r.camp && hit.site.id === r.site) {
     // Still here after check-out: the campground charges another night.
     const p = price(s, camp.pricePerNight);
-    s.cash = Math.round((s.cash - p) * 100) / 100;
-    s.tx.push({ t: s.time.minutes, amount: -p, category: 'campsite', label: `${camp.name}: stayed past check-out` });
-    s.stats.today.spent += p;
+    bill(s, p, 'campsite', `${camp.name}: stayed past check-out`);
     r.checkoutMin += 1440;
     r.nights += 1;
     note(s, `You stayed past check-out. ${camp.name} charged another night (${money(p)}).`, 'money');
@@ -243,6 +242,12 @@ export function pretrip(s: GameState): Pretrip {
   if (v.awning) issues.push({ id: 'awning', label: 'Awning is extended', minutes: 2, fixable: true });
   if (v.levelled) issues.push({ id: 'blocks', label: 'Leveling blocks are under the wheels', minutes: 3, fixable: true });
   if (v.generatorOn) issues.push({ id: 'generator', label: 'Generator is running', minutes: 1, fixable: true });
+  for (const it of installedItems(s, v.id)) {
+    const d = defOf(it);
+    const states = d.floor?.states;
+    const state = states?.find((st) => st.id === it.state) ?? states?.[0];
+    if (state && !state.travel) issues.push({ id: `stow:${it.uid}`, label: `Fold away the ${d.name}`, minutes: 1, fixable: true });
+  }
   for (const it of outdoorItemsNear(s)) {
     const comp = bestCompartment(s, v.id, it);
     issues.push({
@@ -281,6 +286,14 @@ export function packUp(s: GameState): { minutes: number; left: PretripIssue[] } 
     else if (iss.id === 'awning') v.awning = false;
     else if (iss.id === 'blocks') v.levelled = false;
     else if (iss.id === 'generator') v.generatorOn = false;
+    else if (iss.id.startsWith('stow:')) {
+      const it = s.items[iss.id.slice(5)];
+      const state = it && defOf(it).floor?.states?.[0]?.id;
+      if (it && state) {
+        const result = setItemState(s, v.id, it.uid, state);
+        if (!result.ok) { minutes -= iss.minutes; left.push({ ...iss, fixable: false, reason: result.reason }); }
+      }
+    }
     else if (iss.id === 'loose') for (const it of looseUnsecured(s, v.id)) it.secured = true;
     else if (iss.id.startsWith('out:')) {
       const r = packOutdoor(s, iss.id.slice(4));

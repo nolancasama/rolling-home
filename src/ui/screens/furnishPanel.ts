@@ -34,8 +34,8 @@ export function furnishPanel(g: Game) {
         selPanel = h('div', null,
           h('div', { style: 'font-weight:900' }, `Placing: ${itemName(it)}`),
           h('p', { class: 'small' }, 'Move the mouse to position it. R rotates. Click to place. Right-click cancels.'),
-          mv.issues.length ? h('ul', { class: 'issues', testid: 'placement-issues' }, mv.issues.map((i) => h('li', null, i.text))) : h('div', { class: 'callout good small', testid: 'placement-ok' }, 'Fits here.'),
-          h('div', { class: 'row', style: 'margin-top:6px' }, btn('Rotate (R)', () => fm.rotate(), 'small ghost', 'f-rotate'), btn('Place', () => fm.place(), 'small teal', 'f-place', mv.issues.length > 0), btn('Cancel', () => fm.cancelMove(), 'small ghost')),
+          mv.issues.length ? h('ul', { class: 'issues', testid: 'placement-issues' }, mv.issues.map((i) => h('li', { style: i.severity === 'warn' ? 'color:#b87918' : '' }, `${i.severity === 'warn' ? 'Warning: ' : ''}${i.text}`))) : h('div', { class: 'callout good small', testid: 'placement-ok' }, 'Fits here.'),
+          h('div', { class: 'row', style: 'margin-top:6px' }, btn('Rotate (R)', () => fm.rotate(), 'small ghost', 'f-rotate'), btn('Place', () => fm.place(), 'small teal', 'f-place', mv.issues.some((issue) => issue.severity === 'block')), btn('Cancel', () => fm.cancelMove(), 'small ghost')),
         );
       } else if (sel) {
         const d = defOf(sel);

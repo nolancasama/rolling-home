@@ -19,10 +19,13 @@ import * as shop from './shop';
 import { moveToCompartment } from './storage';
 import { advance, type AdvanceCtx } from './time';
 import * as travel from './travel';
-import type { GameState, PlayerMode } from './types';
-import { activeVehicle } from './vehicle';
+import type { GameState, LightSettings, PlayerMode } from './types';
+import * as utilities from './utilities';
+import { activeVehicle, defOf, installedItems } from './vehicle';
 
 export interface SleepSummary {
+  ok: boolean;
+  reason?: string;
   minutes: number;
   quality: number;
   reasons: string[];
@@ -102,7 +105,8 @@ export class Sim {
   }
 
   // ── living ──
-  cook(uid: string) { return this.timed(living.cook(this.s, uid), 'idle'); }
+  cook(uid: string, method: living.CookingMethod = 'stove') { return this.timed(living.cook(this.s, uid, method), 'idle'); }
+  microwaveCook(uid: string) { return this.cook(uid, 'microwave'); }
   eat(uid: string) { return this.timed(living.eat(this.s, uid), 'idle'); }
   discard(uid: string) { const r = living.discard(this.s, uid); this.changed(); return r; }
   rvShower() { return this.timed(living.rvShower(this.s)); }
@@ -114,6 +118,13 @@ export class Sim {
 
   sleep(nap: boolean): SleepSummary {
     const s = this.s;
+    const prepared = living.prepareSleep(s, nap);
+    if (!prepared.ok) {
+      note(s, prepared.reason, 'warn');
+      return { ok: false, reason: prepared.reason, minutes: 0, quality: 0, reasons: [prepared.reason], energyBefore: s.player.needs.energy,
+        energyAfter: s.player.needs.energy, day: dayOf(s.time.minutes), earned: 0, spent: 0, km: 0, discoveries: [] };
+    }
+    if (prepared.minutes) this.advance(prepared.minutes, this.ctxFor());
     const plan = living.sleepPlan(s, nap);
     const before = s.player.needs.energy;
     const startDay = s.stats.today;
@@ -121,7 +132,7 @@ export class Sim {
     if (plan.quality < 0.6) addMood(s, 'bad_sleep', 'Rough night', -6, 6);
     else if (plan.quality > 0.95) addMood(s, 'good_sleep', 'Slept like a log', 6, 8);
     const summary: SleepSummary = {
-      minutes: plan.minutes, quality: plan.quality, reasons: plan.reasons, energyBefore: before, energyAfter: s.player.needs.energy,
+      ok: true, minutes: plan.minutes, quality: plan.quality, reasons: plan.reasons, energyBefore: before, energyAfter: s.player.needs.energy,
       day: dayOf(s.time.minutes), earned: startDay.earned, spent: startDay.spent, km: startDay.km, discoveries: [...startDay.discoveries],
     };
     if (!nap) {
@@ -235,6 +246,16 @@ export class Sim {
     const s = this.s;
     const q = jobs.remoteQuote(s, gigId, atTable);
     if (!q.ok) return fail(q.reason ?? 'Cannot work right now.');
+    if (atTable) {
+      const table = installedItems(s, this.v.id).find((it) => {
+        const d = defOf(it);
+        return d.features?.table && d.floor?.states?.some((st) => st.id === 'open');
+      });
+      if (table) {
+        const r = this.setItemState(table.uid, 'open');
+        if (!r.ok) return r;
+      }
+    }
     hours = Math.max(0.5, Math.min(q.maxHours, hours));
     const v = activeVehicle(s);
     const gig = REMOTE_GIGS.find((g) => g.id === gigId)!;
@@ -290,6 +311,29 @@ export class Sim {
   installSlot(uid: string) { const r = furnish.installSlot(this.s, this.v.id, uid); this.changed(); return r; }
   uninstallSlot(uid: string) { const r = furnish.uninstallSlot(this.s, this.v.id, uid); this.changed(); return r; }
   swapMattress(bed: string, mattress: string) { const r = furnish.swapMattress(this.s, this.v.id, bed, mattress); this.changed(); return r; }
+  setItemState(uid: string, state: string): Result {
+    const it = this.s.items[uid];
+    const current = it?.state ?? (it ? defOf(it).floor?.states?.[0]?.id : undefined);
+    const r = furnish.setItemState(this.s, this.v.id, uid, state);
+    if (r.ok && current !== state) this.advance(defOf(this.s.items[uid]).features?.bed ? 2 : 1, this.ctxFor());
+    if (r.ok) this.changed();
+    return r;
+  }
+  setCovering(window: string, open: number, layer?: 'day' | 'night'): Result {
+    const r = living.setCovering(this.s, this.v.id, window, open, layer);
+    if (r.ok) { this.advance(1, this.ctxFor()); this.changed(); }
+    return r;
+  }
+  setLight(uid: string, settings: Partial<LightSettings>): Result {
+    const r = utilities.setLight(this.s, this.v.id, uid, settings);
+    if (r.ok) this.changed();
+    return r;
+  }
+  setAllLights(mode: LightSettings['mode']): Result {
+    const r = utilities.setAllLights(this.s, this.v.id, mode);
+    if (r.ok) this.changed();
+    return r;
+  }
 
   // ── travel / world ──
   assistedTravel(destNode: string) { const r = travel.runAssisted(this.s, destNode); this.changed(); return r; }

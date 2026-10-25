@@ -14,6 +14,9 @@ import {
 import { computeWeight, type WeightStatus } from './weight';
 import { dFromZ } from '../data/vehicles';
 import { setupNewVehicle } from './newgame';
+import { doorFitIssue } from './furnish';
+import { factoryAppeal, interiorAppeal } from './appeal';
+import { resolveDef } from './families';
 
 // Shops: buying with full storage + weight checks, selling, and the dealership.
 
@@ -27,7 +30,7 @@ export interface ShopLine {
 
 export function shopPrice(s: GameState, shopId: string, entry: StockEntry): number {
   const shop = SHOPS[shopId];
-  return price(s, itemDef(entry.item).price * shop.priceMul * (entry.priceMul ?? 1));
+  return price(s, resolveDef(itemDef(entry.item), {}).price * shop.priceMul * (entry.priceMul ?? 1));
 }
 
 export function shopLines(s: GameState, shopId: string): ShopLine[] {
@@ -35,7 +38,7 @@ export function shopLines(s: GameState, shopId: string): ShopLine[] {
   return shop.stock.map((entry) => {
     const sold = s.usedSold[`${shopId}:${entry.item}`] ?? 0;
     return {
-      entry, def: itemDef(entry.item), price: shopPrice(s, shopId, entry), condition: entry.condition ?? 1,
+      entry, def: resolveDef(itemDef(entry.item), {}), price: shopPrice(s, shopId, entry), condition: entry.condition ?? 1,
       remaining: entry.qty != null ? Math.max(0, entry.qty - sold) : null,
     };
   });
@@ -77,7 +80,9 @@ export function previewPurchase(s: GameState, shopId: string, itemId: string, co
   };
   if (!line) return { ...base, reason: 'Not sold here.' };
   if (line.remaining === 0) return { ...base, reason: 'Sold out.' };
-  if (s.cash < line.price) return { ...base, reason: `Not enough cash (${money(line.price)} needed, you have ${money(s.cash)}).` };
+  if (s.gameType !== 'creative' && s.cash < line.price) return { ...base, reason: `Not enough cash (${money(line.price)} needed, you have ${money(s.cash)}).` };
+  const doorIssue = doorFitIssue(vdef(v), line.def, s.gameType === 'creative' && !!s.creativeRelaxed);
+  if (doorIssue?.severity === 'block') return { ...base, reason: doorIssue.text };
   const counter = s.uidCounter;
   const inst = tempItem(s, itemId, line.condition);
   const kg = itemKg(inst);
@@ -120,12 +125,13 @@ export function previewPurchase(s: GameState, shopId: string, itemId: string, co
   const minus = oldMattress && !oldMattress.storedIn ? [oldMattress.uid] : [];
   const after = computeWeight(s, v.id, { extra: [{ label: line.def.name, cat: 'belongings', kg, d }], exclude: minus });
   const warnings: string[] = [];
+  if (doorIssue) warnings.push(doorIssue.text);
   if (after.worstFraction > 0) warnings.push(`After this purchase: ${after.messages.join('; ')}.`);
   if (line.def.food?.perishable && comp && !compartmentById(s, v.id, comp)!.refrigerated) {
     warnings.push('No fridge space: this will spoil without refrigeration.');
   }
   return {
-    ok: true, price: line.price, cashAfter: s.cash - line.price + (oldMattress?.tradeIn ?? 0), comp,
+    ok: true, price: line.price, cashAfter: s.cash - (s.gameType === 'creative' ? 0 : line.price) + (oldMattress?.tradeIn ?? 0), comp,
     compName: comp ? compartmentById(s, v.id, comp)!.name : undefined, installBed, oldMattress,
     weightBefore: before.total, weightAfter: after.total, payloadAfter: after.payloadLeft, status: after.status, warnings,
   };
@@ -240,6 +246,7 @@ export function tradeInValue(s: GameState, v: VehicleState = activeVehicle(s)): 
   let val = d.price * (0.32 + 0.43 * cond) * (0.85 + 0.15 * v.body);
   const defaultIds = new Set(d.defaults.map((x) => x.item));
   for (const it of installedItems(s, v.id)) if (!defaultIds.has(it.def)) val += defOf(it).price * 0.45 * it.condition;
+  val += Math.round(d.price * 0.15 * Math.max(0, interiorAppeal(s, v.id) - factoryAppeal(d)));
   return Math.round(val / 50) * 50;
 }
 

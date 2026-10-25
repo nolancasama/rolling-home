@@ -1,4 +1,6 @@
-import type { ItemDef, Rect, VehicleDef } from '../data/types';
+import type { ItemConfig, ItemDef, Rect, VehicleDef } from '../data/types';
+import { itemDef } from '../data/items';
+import { resolveDef } from './families';
 import { fail, ok, type Result } from './core';
 import { bestCompartment, whyNoRoom } from './storage';
 import type { GameState, ItemInstance } from './types';
@@ -19,6 +21,9 @@ export interface LayoutItem {
   x: number;
   z: number;
   rot: number;
+  y?: number;
+  config?: ItemConfig;
+  state?: string;
 }
 
 export function footprint(def: ItemDef, x: number, z: number, rot: number): Rect {
@@ -60,34 +65,87 @@ export function inside(a: Rect, outer: Rect): boolean {
 }
 
 export interface PlacementIssue {
-  code: 'outside' | 'overlap' | 'door' | 'access' | 'blocked' | 'plumbing' | 'blacktank';
+  code: 'outside' | 'overlap' | 'door' | 'access' | 'blocked' | 'plumbing' | 'blacktank' | 'wall' | 'window' | 'headroom' | 'doorfit' | 'gas' | 'deploy' | 'power' | 'mixedbattery';
+  severity: 'block' | 'warn';
   text: string;
 }
 
 export function layoutOf(s: GameState, vid: string): LayoutItem[] {
   return floorItems(s, vid).map((it) => {
     const w = it.where as Extract<ItemInstance['where'], { kind: 'floor' }>;
-    return { uid: it.uid, def: it.def, x: w.x, z: w.z, rot: w.rot };
+    return { uid: it.uid, def: it.def, x: w.x, z: w.z, rot: w.rot, y: w.y, config: it.config, state: it.state };
   });
 }
 
 function defs(li: LayoutItem): ItemDef {
-  return defOf({ def: li.def } as ItemInstance);
+  return resolveDef(itemDef(li.def), li);
+}
+
+export function itemElevation(vd: VehicleDef, item: LayoutItem): number {
+  const floor = defs(item).floor!;
+  if (floor.mount === 'ceiling') return vd.interior.ceilingY - vd.interior.floorY - floor.height;
+  if (floor.mount === 'wall') return item.y ?? floor.elevation ?? 0;
+  return 0;
+}
+
+function standingObstacle(vd: VehicleDef, item: LayoutItem): boolean {
+  const d = defs(item);
+  const y = itemElevation(vd, item);
+  return !d.floor?.flat && y < 1.75 && y + d.floor!.height > 0;
+}
+
+/** Flat-packed furniture is assembled inside; other purchases need an actual entry opening. */
+export function doorFitIssue(vd: VehicleDef, def: ItemDef, relaxed = false): PlacementIssue | null {
+  if (def.floor?.flatpack) return null;
+  const [a, b] = [...def.dims].sort((x, y) => x - y);
+  if (vd.interior.openings.some((o) => (a <= o.w && b <= o.h) || (a <= o.h && b <= o.w))) return null;
+  const opening = vd.interior.openings[0];
+  return { code: 'doorfit', severity: relaxed ? 'warn' : 'block', text: `${def.name} cannot fit through the ${opening?.name ?? 'entry door'}${opening ? ` (${opening.w.toFixed(2)} × ${opening.h.toFixed(2)} m)` : ''}.` };
+}
+
+function backWall(vd: VehicleDef, item: LayoutItem, tolerance: number): 'left' | 'right' | 'rear' | null {
+  const fp = footprint(defs(item), item.x, item.z, item.rot);
+  const living = vd.interior.living;
+  const rot = ((item.rot % 4) + 4) % 4;
+  if (rot === 3 && Math.abs(fp.x1 - living.x1) <= tolerance + EPS) return 'left';
+  if (rot === 1 && Math.abs(fp.x0 - living.x0) <= tolerance + EPS) return 'right';
+  if (rot === 0 && Math.abs(fp.z0 - living.z0) <= tolerance + EPS) return 'rear';
+  return null;
 }
 
 /** Checks one item against the floor plan and the rest of the layout (no path check). */
-export function staticIssues(vd: VehicleDef, layout: LayoutItem[], item: LayoutItem): PlacementIssue[] {
+export function staticIssues(vd: VehicleDef, layout: LayoutItem[], item: LayoutItem, s?: GameState): PlacementIssue[] {
   const out: PlacementIssue[] = [];
   const d = defs(item);
   const fp = footprint(d, item.x, item.z, item.rot);
   const flat = !!d.floor?.flat;
   const living = vd.interior.living;
-  if (!inside(fp, living)) out.push({ code: 'outside', text: 'Must sit inside the living area (not the cab or outside the walls).' });
+  const y = itemElevation(vd, item), top = y + d.floor!.height;
+  const clearance = vd.interior.ceilingY - vd.interior.floorY;
+  const relaxed = s?.gameType === 'creative' && s.creativeRelaxed;
+  const issue = (code: PlacementIssue['code'], text: string, warn = false) => out.push({ code, text, severity: warn || (relaxed && ['plumbing', 'blacktank', 'gas', 'doorfit'].includes(code)) ? 'warn' : 'block' });
+  if (!inside(fp, living)) issue('outside', 'Must sit inside the living area (not the cab or outside the walls).');
   if (d.floor?.plumbing && !vd.interior.plumbing.some((z) => inside(fp, z))) {
-    out.push({ code: 'plumbing', text: 'Needs plumbing: place it fully inside a blue plumbing zone.' });
+    issue('plumbing', 'Needs plumbing: place it fully inside a blue plumbing zone.');
   }
-  if (d.floor?.needsBlackTank && !vd.tanks.black) out.push({ code: 'blacktank', text: 'Needs a built-in black water tank, which this vehicle does not have.' });
-  if (!flat && overlaps(fp, vd.interior.door.zone)) out.push({ code: 'door', text: 'Blocks the entry door.' });
+  if (d.floor?.needsBlackTank && !vd.tanks.black) issue('blacktank', 'Needs a built-in black water tank, which this vehicle does not have.');
+  if (d.floor?.propane && !vd.interior.gas.some((zone) => inside(fp, zone))) issue('gas', 'Needs a gas line: place it fully inside a gas zone.');
+  if (!flat && y < 1.95 && top > 0 && overlaps(fp, vd.interior.door.zone)) issue('door', 'Blocks the entry door.');
+  if (y < -EPS || top > clearance + 0.01) issue('headroom', `Too tall: needs ${top.toFixed(2)} m, the ceiling is ${clearance.toFixed(2)} m above the floor.`);
+  if (d.floor?.mount === 'wall') {
+    const [min, max] = d.floor.elevationRange ?? [0, 'clearance'];
+    if (y < min - EPS || y > (max === 'clearance' ? clearance - d.floor.height : max) + EPS) issue('headroom', `Mount between ${min.toFixed(2)} m and ${(max === 'clearance' ? clearance - d.floor.height : max).toFixed(2)} m above the floor.`);
+  }
+  const wall = backWall(vd, item, d.floor?.mount === 'wall' ? 0.015 : 0.03);
+  if ((d.floor?.againstWall || d.floor?.mount === 'wall') && !wall) issue('wall', 'The back must touch a wall and face into the room.');
+  if (wall) for (const win of vd.interior.windows) {
+    if (win.side !== wall) continue;
+    const a0 = wall === 'rear' ? fp.x0 : fp.z0, a1 = wall === 'rear' ? fp.x1 : fp.z1;
+    const span = Math.min(a1, win.a1) - Math.max(a0, win.a0);
+    const sill = win.y0 - vd.interior.floorY, winTop = win.y1 - vd.interior.floorY;
+    if ((d.floor?.mount === 'wall' && span > EPS && Math.min(top, winTop) - Math.max(y, sill) > 0.02) ||
+        (d.floor?.mount !== 'wall' && span > 0.05 && top > sill + 0.35)) issue('window', `Would cover window ${win.id}.`);
+  }
   const myAcc = accessZone(d, item.x, item.z, item.rot);
   for (const other of layout) {
     if (other.uid === item.uid) continue;
@@ -95,13 +153,18 @@ export function staticIssues(vd: VehicleDef, layout: LayoutItem[], item: LayoutI
     const ofp = footprint(od, other.x, other.z, other.rot);
     const oflat = !!od.floor?.flat;
     if (flat !== oflat) continue; // rugs lie under furniture
-    if (overlaps(fp, ofp)) out.push({ code: 'overlap', text: `Overlaps ${od.name}.` });
+    const oy = itemElevation(vd, other), otop = oy + od.floor!.height;
+    if (overlaps(fp, ofp) && Math.min(top, otop) - Math.max(y, oy) > 0.01) issue('overlap', `Overlaps ${od.name}.`);
     if (flat) continue;
     const oacc = accessZone(od, other.x, other.z, other.rot);
-    if (oacc && overlaps(fp, oacc)) out.push({ code: 'access', text: `Blocks access to ${od.name}.` });
-    if (myAcc && overlaps(myAcc, ofp)) out.push({ code: 'access', text: `${od.name} is in front of it: you could not use it.` });
+    if (oacc && standingObstacle(vd, item) && (oy < 1 || top > 1) && overlaps(fp, oacc)) issue('access', `Blocks access to ${od.name}.`);
+    if (myAcc && standingObstacle(vd, other) && (y < 1 || otop > 1) && overlaps(myAcc, ofp)) issue('access', `${od.name} is in front of it: you could not use it.`);
   }
-  if (myAcc && !inside(myAcc, { ...living, z1: vd.interior.cab.z1 })) out.push({ code: 'access', text: 'Its front faces a wall.' });
+  if (myAcc && !inside(myAcc, { ...living, z1: vd.interior.cab.z1 })) issue('access', 'Its front faces a wall.');
+  if (d.floor?.ac && s) {
+    const inverter = Object.values(s.items).filter((it) => it.where.kind === 'slot' && it.where.vehicle === s.vehicles.find((v) => v.def === vd.id)?.id).reduce((max, it) => Math.max(max, defOf(it).features?.inverter?.watts ?? 0), 0);
+    if (inverter < d.floor.ac.minInverter) issue('power', `Needs 120 V: runs only on shore power or the generator unless you install an inverter of at least ${d.floor.ac.minInverter.toLocaleString('en-US')} W.`, true);
+  }
   return out;
 }
 
@@ -115,7 +178,7 @@ export function reachability(vd: VehicleDef, layout: LayoutItem[]): { unreachabl
   const z0 = Math.min(living.z0, cab.z0), z1 = Math.max(living.z1, cab.z1);
   const nx = Math.ceil((x1 - x0) / CELL), nz = Math.ceil((z1 - z0) / CELL);
   const free = new Uint8Array(nx * nz);
-  const bodies = layout.filter((l) => !defs(l).floor?.flat).map((l) => footprint(defs(l), l.x, l.z, l.rot));
+  const bodies = layout.filter((l) => standingObstacle(vd, l)).map((l) => footprint(defs(l), l.x, l.z, l.rot));
   // cab seats occupy space
   bodies.push(seatRect(vd.interior.driverSeat), seatRect(vd.interior.passengerSeat));
   const r = BODY_RADIUS;
@@ -173,7 +236,8 @@ export function reachability(vd: VehicleDef, layout: LayoutItem[]): { unreachabl
   for (const l of layout) {
     const d = defs(l);
     const acc = accessZone(d, l.x, l.z, l.rot);
-    if (acc && !reach(acc)) unreachable.add(l.uid);
+    // High storage can be reached across low furniture from the aisle, one body diameter beyond its zone.
+    if (acc && !reach(acc, itemElevation(vd, l) >= 1 ? BODY_RADIUS * 2 : 0.12)) unreachable.add(l.uid);
   }
   const ds = vd.interior.driverSeat;
   const cabReachable = reach({ x0: ds.x - 0.45, x1: ds.x + 0.25, z0: ds.z - 0.6, z1: ds.z - 0.2 }, 0.2);
@@ -190,13 +254,67 @@ export interface LayoutCheck {
   valid: boolean;
 }
 
-export function checkLayout(vd: VehicleDef, layout: LayoutItem[]): LayoutCheck {
+export function checkLayout(vd: VehicleDef, layout: LayoutItem[], s?: GameState): LayoutCheck {
   const issues: Record<string, PlacementIssue[]> = {};
-  for (const l of layout) issues[l.uid] = staticIssues(vd, layout, l);
+  for (const l of layout) {
+    issues[l.uid] = staticIssues(vd, layout, l, s);
+    const states = defs(l).floor?.states;
+    const current = states?.find((state) => state.id === l.state) ?? states?.[0];
+    for (const state of states ?? []) {
+      if (state.id === current?.id) continue;
+      const candidate = stateCandidate(l, state.id);
+      const collision = staticIssues(vd, layout, candidate).find((issue) => ['outside', 'overlap', 'door', 'headroom'].includes(issue.code));
+      if (collision) issues[l.uid].push({ code: 'deploy', severity: 'warn', text: deploymentText(collision) });
+    }
+  }
+  if (s && layout.length) {
+    const vid = s.vehicles.find((vehicle) => vehicle.def === vd.id)?.id;
+    const batteries = Object.values(s.items).filter((inst) => inst.where.kind === 'slot' && inst.where.vehicle === vid && !!defOf(inst).features?.battery);
+    if (batteries.some((inst) => inst.def.startsWith('agm')) && batteries.some((inst) => inst.def.startsWith('lithium'))) {
+      issues[layout[0].uid].push({ code: 'mixedbattery', severity: 'warn', text: 'Mixing AGM and lithium shortens battery life.' });
+    }
+  }
   const r = reachability(vd, layout);
-  for (const uid of r.unreachable) issues[uid].push({ code: 'blocked', text: 'Cannot be reached from the door: the aisle is blocked.' });
-  const valid = Object.values(issues).every((x) => x.length === 0) && r.cabReachable;
+  for (const uid of r.unreachable) issues[uid].push({ code: 'blocked', severity: 'block', text: 'Cannot be reached from the door: the aisle is blocked.' });
+  const valid = Object.values(issues).every((x) => !x.some((issue) => issue.severity === 'block')) && r.cabReachable;
   return { issues, cabBlocked: !r.cabReachable, valid };
+}
+
+function deploymentText(issue: PlacementIssue): string {
+  if (issue.code === 'overlap') return `Unfolded, it would hit the ${issue.text.slice('Overlaps '.length)}`;
+  if (issue.code === 'door') return 'Unfolded, it would block the entry door.';
+  if (issue.code === 'outside') return 'Unfolded, it would hit a wall.';
+  return issue.text;
+}
+
+function stateCandidate(item: LayoutItem, state: string): LayoutItem {
+  const current = defs(item);
+  const candidate = { ...item, state };
+  if (current.floor?.againstWall) {
+    // Hinged wall furniture opens into the room while its mounting edge stays fixed.
+    const depthChange = defs(candidate).floor!.footprint[1] - current.floor.footprint[1];
+    const [fx, fz] = facing(item.rot);
+    candidate.x += fx * depthChange / 2;
+    candidate.z += fz * depthChange / 2;
+  }
+  return candidate;
+}
+
+/** State changes only require bodily clearance; access zones are checked when arranging furniture. */
+export function setItemState(s: GameState, vid: string, uid: string, stateId: string): Result {
+  const inst = s.items[uid];
+  if (!inst || inst.where.kind !== 'floor' || inst.where.vehicle !== vid) return fail('That item is not installed in this vehicle.');
+  const states = defOf(inst).floor?.states;
+  if (!states?.some((state) => state.id === stateId)) return fail('That state is not available.');
+  const vd = vdef(vehicleById(s, vid));
+  const layout = layoutOf(s, vid);
+  const candidate = stateCandidate(layout.find((entry) => entry.uid === uid)!, stateId);
+  const collision = staticIssues(vd, layout, candidate, s).find((issue) => ['outside', 'overlap', 'door', 'headroom'].includes(issue.code));
+  if (collision) return fail(deploymentText(collision));
+  inst.state = stateId;
+  inst.where.x = candidate.x;
+  inst.where.z = candidate.z;
+  return ok();
 }
 
 /** Validate a candidate placement of one item (new or moved) against the current layout. */
@@ -204,16 +322,21 @@ export function checkPlacement(s: GameState, vid: string, cand: LayoutItem): Pla
   const vd = vdef(vehicleById(s, vid));
   const layout = layoutOf(s, vid).filter((l) => l.uid !== cand.uid);
   layout.push(cand);
-  const res = checkLayout(vd, layout);
+  const res = checkLayout(vd, layout, s);
   const own = res.issues[cand.uid] ?? [];
+  const inst = s.items[cand.uid];
+  if (!inst || !('vehicle' in inst.where) || inst.where.vehicle !== vid) {
+    const entry = doorFitIssue(vd, defs(cand), s.gameType === 'creative' && !!s.creativeRelaxed);
+    if (entry) own.push(entry);
+  }
   const extra: PlacementIssue[] = [];
   for (const l of layout) {
     if (l.uid === cand.uid) continue;
     for (const iss of res.issues[l.uid]) {
-      if (iss.code === 'blocked') extra.push({ code: 'blocked', text: `Would block the way to ${defs(l).name}.` });
+      if (iss.code === 'blocked') extra.push({ code: 'blocked', severity: 'block', text: `Would block the way to ${defs(l).name}.` });
     }
   }
-  if (res.cabBlocked) extra.push({ code: 'blocked', text: 'Would block the path to the driver’s seat.' });
+  if (res.cabBlocked) extra.push({ code: 'blocked', severity: 'block', text: 'Would block the path to the driver’s seat.' });
   return [...own, ...dedupe(extra)];
 }
 
@@ -224,17 +347,19 @@ function dedupe(list: PlacementIssue[]): PlacementIssue[] {
 
 // ── operations (furnishing mode works on the live state; time is paused) ──
 
-export function placeItem(s: GameState, vid: string, uid: string, x: number, z: number, rot: number): Result {
+export function placeItem(s: GameState, vid: string, uid: string, x: number, z: number, rot: number, y?: number): Result {
   const it = s.items[uid];
   if (!it) return fail('Item not found.');
   const d = defOf(it);
   if (!d.floor) return fail(`${d.name} is not floor furniture.`);
   if (it.where.kind === 'stored' && it.where.vehicle !== vid) return fail('That item is not in this vehicle.');
   if (it.where.kind !== 'stored' && it.where.kind !== 'floor') return fail('Bring the item into the RV first.');
-  const iss = checkPlacement(s, vid, { uid, def: it.def, x, z, rot: ((rot % 4) + 4) % 4 });
+  const elevation = y ?? (it.where.kind === 'floor' ? it.where.y : undefined);
+  const candidate = { uid, def: it.def, x, z, rot: ((rot % 4) + 4) % 4, y: elevation, config: it.config, state: it.state };
+  const iss = checkPlacement(s, vid, candidate).filter((issue) => issue.severity === 'block');
   if (iss.length) return fail(iss[0].text);
   // contents of storage furniture move with it; nothing to do (compartment id = item uid)
-  it.where = { kind: 'floor', vehicle: vid, x, z, rot: ((rot % 4) + 4) % 4 };
+  it.where = { kind: 'floor', vehicle: vid, x, z, rot: ((rot % 4) + 4) % 4, y: itemElevation(vdef(vehicleById(s, vid)), candidate) };
   it.secured = undefined;
   return ok();
 }

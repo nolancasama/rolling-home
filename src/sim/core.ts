@@ -113,7 +113,7 @@ export function money(n: number): string {
 }
 
 export function canAfford(s: GameState, amount: number): boolean {
-  return amount <= 0 || s.cash >= amount - 1e-6;
+  return s.gameType === 'creative' || amount <= 0 || s.cash >= amount - 1e-6;
 }
 
 function logTx(s: GameState, amount: number, category: TxCategory, label: string) {
@@ -125,6 +125,7 @@ function logTx(s: GameState, amount: number, category: TxCategory, label: string
 
 /** Charge a cost the player chose; refuses when funds are insufficient. */
 export function charge(s: GameState, amount: number, category: TxCategory, label: string): Result {
+  if (s.gameType === 'creative') return ok();
   amount = Math.round(amount * 100) / 100;
   if (amount <= 0) return ok();
   if (!canAfford(s, amount)) return fail(`Not enough cash: ${money(amount)} needed, you have ${money(s.cash)}.`);
@@ -135,6 +136,7 @@ export function charge(s: GameState, amount: number, category: TxCategory, label
 
 /** Mandatory costs (fees, recurring bills) — may push cash negative. */
 export function bill(s: GameState, amount: number, category: TxCategory, label: string): void {
+  if (s.gameType === 'creative') return;
   amount = Math.round(amount * 100) / 100;
   if (amount <= 0) return;
   s.cash = Math.round((s.cash - amount) * 100) / 100;

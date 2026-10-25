@@ -40,6 +40,15 @@ const CONVENIENCE: StockEntry[] = [
   { item: 'water_jug' }, { item: 'butane' }, { item: 'firewood' }, { item: 'cargo_straps' },
 ];
 
+const DESIGN_STOCK: StockEntry[] = [
+  'cab_base','cab_upper','cab_tall','cab_wardrobe','cab_drawers','cab_open_shelf',
+  'sofa_lounge','sofa_jackknife','murphy_bed','bunk_beds','table_telescoping','recliner','theater_seats',
+  'ottoman','storage_bench','wall_art','fridge_drawer','fridge_12v_10cf','fridge_residential','microwave',
+  'range_hood','wet_bath_deluxe','light_dome','light_flush','light_puck','light_pendant','light_sconce',
+  'light_reading','light_undercab','light_accent','light_awning','lithium_200','lithium_300',
+  'inverter_1000','inverter_charger','mppt','solar_400',
+].map(item=>({item}));
+
 export const SHOPS: Record<string, ShopDef> = {
   dj_grocery: {
     id: 'dj_grocery', name: 'Cactus Market', place: 'dusty', kind: 'grocery', priceMul: 1,
@@ -57,9 +66,10 @@ export const SHOPS: Record<string, ShopDef> = {
       { item: 'leveling_blocks' }, { item: 'solar_100' }, { item: 'solar_200' }, { item: 'agm_battery' },
       { item: 'lithium_battery' }, { item: 'roof_fan' }, { item: 'aux_tank' }, { item: 'inverter' },
       { item: 'signal_booster' }, { item: 'string_lights' }, { item: 'cooler_fridge' }, { item: 'cassette_toilet' },
-      { item: 'outdoor_shower' }, { item: 'small_cabinet' }, { item: 'folding_table' }, { item: 'rug' },
+      { item: 'outdoor_shower' }, { item: 'folding_table' }, { item: 'rug' },
       { item: 'plant' }, { item: 'foam_van' }, { item: 'memory_van' }, { item: 'foam_double' },
       { item: 'appliance_kit' },
+      ...DESIGN_STOCK,
     ],
   },
   dj_salvage: {
@@ -69,7 +79,7 @@ export const SHOPS: Record<string, ShopDef> = {
       { item: 'solar_100', priceMul: 0.5, condition: 0.7, qty: 1 },
       { item: 'agm_battery', priceMul: 0.45, condition: 0.6, qty: 2 },
       { item: 'swivel_chair', priceMul: 0.45, condition: 0.7, qty: 1 },
-      { item: 'small_cabinet', priceMul: 0.5, condition: 0.6, qty: 1 },
+      { item: 'cab_base', priceMul: 0.5, condition: 0.6, qty: 1 },
       { item: 'fridge_75', priceMul: 0.5, condition: 0.55, qty: 1 },
       { item: 'tool_kit', priceMul: 0.55, condition: 0.8, qty: 1 },
       { item: 'camp_chair', priceMul: 0.5, condition: 0.6, qty: 2 },
@@ -98,8 +108,8 @@ export const SHOPS: Record<string, ShopDef> = {
       { item: 'camp_chair' }, { item: 'camp_table' }, { item: 'tool_kit' }, { item: 'engine_kit' },
       { item: 'brake_kit' }, { item: 'suspension_kit' }, { item: 'appliance_kit' }, { item: 'leveling_blocks' },
       { item: 'cargo_straps' }, { item: 'firewood' }, { item: 'outdoor_shower' }, { item: 'rug' }, { item: 'plant' },
-      { item: 'bookshelf' }, { item: 'swivel_chair' }, { item: 'tall_cabinet' }, { item: 'wardrobe' },
-      { item: 'small_cabinet' }, { item: 'folding_table' }, { item: 'string_lights' }, { item: 'kitchenware' },
+      { item: 'bookshelf' }, { item: 'swivel_chair' }, { item: 'cab_tall' }, { item: 'cab_wardrobe' },
+      { item: 'cab_base' }, { item: 'folding_table' }, { item: 'string_lights' }, { item: 'kitchenware' },
     ],
   },
   mc_gas_shop: {
@@ -114,7 +124,8 @@ export const SHOPS: Record<string, ShopDef> = {
       { item: 'van_galley' }, { item: 'composting_toilet' }, { item: 'wet_bath' }, { item: 'generator' },
       { item: 'awning' }, { item: 'lithium_battery' }, { item: 'solar_200' }, { item: 'inverter' },
       { item: 'signal_booster' }, { item: 'memory_double' }, { item: 'hybrid_double' }, { item: 'memory_van' },
-      { item: 'dinette' }, { item: 'double_bed' }, { item: 'van_bed' }, { item: 'wardrobe' }, { item: 'tall_cabinet' },
+      { item: 'dinette' }, { item: 'double_bed' }, { item: 'van_bed' },
+      ...DESIGN_STOCK,
     ],
   },
   ts_store: {

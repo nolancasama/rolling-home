@@ -131,3 +131,101 @@ written. Summary of what was accepted, modified, rejected/deferred and added:
 - One item-instance table holds every object the player owns; an instance's `where` says whether it is stored
   in a compartment, installed on the floor plan, in a system slot, on a bed (mattress), in a locker or placed
   outdoors. Mass is therefore counted exactly once, wherever an item is.
+
+## 2026-10-25 — Analysis of the "Advanced Vehicle Customization & Interior Design" plan
+
+A second long design prompt (22 parts) asked for a Sims-4-class build/buy mode for the RV interior. Reviewed as
+product lead against the running game before implementation; the detailed implementation contract lives in the
+work orders, the durable decisions are here.
+
+### Accepted
+- **Design Mode** (replaces the furnishing editor) as a flagship feature: orbit / top / cutaway / first-person walk
+  preview, drag-and-drop with hybrid snapping (5 cm grid, wall/edge magnets, unsnapped fine placement, 1 cm nudges),
+  multi-select, duplicate, undo/redo, measuring, a searchable catalog, material editing, time-of-day preview, and
+  placement errors that say why. Nothing is bought or changed until the player confirms.
+- Four customization levels (cosmetic → furniture/equipment → functional → layout). The shell, cab, entry door,
+  wheel wells and chassis are protected by construction: they are not items, so ordinary edits cannot touch them.
+- Independent finish groups: floor zones, wall segments, ceiling zones and one trim group per vehicle, plus
+  per-item material slots (cabinets never inherit wall materials). Finishes are recolorable with adjustable scale,
+  direction, plank size and gloss.
+- Window treatments per window (curtains, sheers, blackout/solar rollers, pleated, day/night, roman, insulated,
+  privacy screens, valances) that open and close and really control light.
+- A parametric cabinet family (base, upper, tall, wardrobe, drawers, open shelf) with sizes, fronts, door styles,
+  handles and countertops; storage and mass derived from the dimensions. Upholstery slots on seating and beds.
+  Transformable furniture with travel states (folding table, jackknife sofa, murphy bed, recliners, dinette bed).
+- Lighting fixtures as real lights with color temperature, dimming and electrical draw.
+- Every finish and object has mass at its position. A finish's weight is the difference from the factory finish
+  (which is part of the shell mass), so nothing is counted twice.
+- Life and Creative game types; blueprints saved locally and applied only to the same interior.
+- The plan's 40-step renovation scenario becomes acceptance sections.
+
+### Modified
+- **"A standalone PC game, not a browser game."** The engine stays TypeScript + Three.js. Switching engines has no
+  compelling technical reason and would throw away the working game. Read as: no browser-driven compromises in
+  this feature (desktop-class materials and lighting) and no browser-only dependencies in the simulation. Blueprints
+  go through a small storage adapter with JSON export/import so a desktop wrapper (Electron/Tauri) can store them as
+  files later. Packaging the game as a desktop app is a separate, deferred step.
+- **Vehicles.** The vertical slice is the existing Class C (the showcase, fully customizable) and the camper van
+  (same system, tighter limits: lower ceiling, no gas line, no black tank). Fifth wheels, buses, semis, Class A and
+  slide-outs stay deferred; surfaces, zones and openings are per-vehicle data, so new types are data plus models.
+- **Layout remodeling** means relocating and replacing modules (galley, wet bath, wardrobe, cabinets, beds) within
+  plumbing and gas zones. The shell has no partition walls, so "remove nonstructural partitions" waits for
+  partition items.
+- **Rotation stays in quarter turns.** RV interiors are rectilinear and axis-aligned footprints keep validation
+  exact; fine placement comes from 1 cm nudges and unsnapped dragging.
+- **Where you can renovate.** Anywhere the RV is parked. The catalog can be ordered anywhere, with a delivery fee
+  unless parked at an RV supply shop. Professional installation (costs money, saves time) is only offered at a
+  mechanic or RV shop; DIY costs game time. Moving furniture you already own is free and instant, so a curtain
+  swap or rearranging stays trivial while a bathroom or battery job is a real trade-off.
+- **Removed equipment** goes to storage if it fits, otherwise it is sold secondhand or discarded; chosen in the
+  review step. (Before this, large factory pieces such as the dinette could not be removed at all: they never fit
+  in storage.)
+- **Resale.** An interior appeal score (finishes, coverings, furnishings, condition) adds a bounded amount to the
+  trade-in value and a little comfort, instead of adding the cost of whatever was bought.
+- **Insulated coverings** have no thermal effect (there is no temperature system); coverings affect light and
+  sleep quality.
+- **Cloth physics rejected:** coverings use procedural folds and animated open/close states.
+
+### Rejected / deferred
+- Online blueprint sharing, environment presets beyond time of day, slide-outs, structural modification,
+  partition walls, per-pipe/per-wire utility design (utility zones instead), new vehicle types.
+
+### Added
+- **Fits-through-the-door check.** Appliances and other items that do not ship knocked-down must pass through an
+  entry opening. An 18 cu ft residential fridge does not fit through a Class C door: the classic RV renovation
+  surprise, and an honest compatibility warning.
+- **Gas zones** next to plumbing zones: propane appliances stay on the factory gas line.
+- **Interior light model.** Sky light reaching interior materials is attenuated by window openness and coverings,
+  so an RV interior is dimmer than outdoors, closed blackout shades darken the room and the fixtures matter at
+  night. *Why:* before this the interior looked the same at noon and at 8 PM.
+- **Dated factory interiors** (mauve berber, floral wallboard, honey oak, quilted valances; faux-wood hardboard in
+  the homemade van conversion) with low appeal, so a renovation has a visible before and after.
+- **Overhead cabinets become real items.** The Class C's 300 L "overhead" storage was invisible; it becomes three
+  upper cabinets you can open, repaint, move or remove. A new game's weights and axle loads stay the same (shell
+  mass compensated) and saves migrate.
+- **Draft-based editing.** Design Mode works on a deep copy of the game state; the save changes only on Confirm, in
+  one atomic commit, so cancelling can never lose money or corrupt inventory.
+
+### Implementation notes (Design Mode S1)
+
+- Family defaults retain their specified dimensions even when a default is off the adjustment grid (upper depth
+  0.33 m). Other supplied dimensions snap to the specified steps, so the factory 0.48 m upper resolves to 0.50 m.
+  Height normalization still clamps to the supplied vehicle clearance; placement separately enforces headroom.
+- Wall-backed transformable furniture keeps its back edge fixed when changing states. Its center moves by half
+  the depth change, including when packing up; this lets an installed wall table or Murphy bed unfold into the room.
+- High storage uses a 0.40 m reachability margin (the walking body's diameter), rather than the floor furniture's
+  0.12 m margin. The rear factory upper can therefore be reached over the bed without making the bed walkable.
+- Dome fixtures draw 5 W in every vehicle, so the van's factory pair draws 10 W at night instead of the old 14 W
+  lump (a small battery gain for the van). *Rejected:* a van-only 6 W override, which made the same item behave
+  differently per vehicle. Existing LED retrofit equipment (string lights) keeps its additional evening load.
+- Countertop finishes on fixed furniture and appliances change mass and value by the material difference from
+  the catalog slot default, using width × (depth + 0.02 m); cabinet families use the full specified construction formula.
+- Trim run length includes floor and ceiling perimeters plus window and entry-door frames. The van bulkhead's
+  finish area starts above its cab headliner. Slot-only materials with unspecified numeric content use zero mass
+  and simple repeat/price defaults; covering type determines window-fabric mass and price.
+- Migrated installed items matching factory definitions receive the factory slot finishes when no finish exists.
+  The pre-migration installed-definition set controls since-v2 additions, allowing all three new uppers and all
+  factory lights to be added while keeping existing uids and their storage references unchanged.
+- Microwave meals retain the existing sink, kitchenware and washing-water requirements, replacing stove fuel,
+  cooking duration and electrical consumption. Blocked convertible sleeping returns a zero-minute summary with
+  `ok: false` and `reason`, preserving the existing summary fields for callers.

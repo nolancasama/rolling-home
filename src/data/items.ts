@@ -1,4 +1,4 @@
-import type { ItemDef } from './types';
+import type { FamilySpec, ItemDef, MaterialSlotDef, SurfaceKind } from './types';
 
 // Item catalog. Masses, sizes and capacities are internally consistent:
 // stored volume defaults to the packed box (l*w*h), so a mattress is light
@@ -398,8 +398,117 @@ const L: ItemDef[] = [
   },
 ];
 
-export const ITEMS: Record<string, ItemDef> = Object.fromEntries(L.map((d) => [d.id, d]));
-export const ITEM_LIST: readonly ItemDef[] = L;
+const slot = (id: string, surfaces: SurfaceKind[], mat: string, color?: string): MaterialSlotDef =>
+  ({ id, label: id[0].toUpperCase() + id.slice(1), surfaces, default: { mat, ...(color ? {color} : {}) } });
+const cabinetSlots = () => [slot('carcass',['cabinet'],'cab_white_oak'),slot('fronts',['cabinet'],'paint_satin','#f6f3ec'),slot('handles',['metal'],'metal_black')];
+const bedding = () => [slot('frame',['frame'],'cab_white_oak'),slot('bedding',['upholstery'],'uph_linen')];
+const top = () => slot('top',['counter','cabinet'],'cab_white_oak');
+const base = () => slot('base',['metal'],'metal_nickel');
+for (const def of L) {
+  const f = def.floor;
+  if (!f) continue;
+  if (def.features?.galley) {
+    def.mass -= 9;
+    f.againstWall = true; f.flatpack = true;
+    def.slots = [...cabinetSlots(),slot('counter',['counter'],'counter_butcher')];
+    if (def.id === 'propane_galley') f.propane = true;
+    if (def.id === 'induction_galley') f.ac = {watts:1800,minInverter:2000};
+  } else if (def.features?.fridge) {
+    def.slots = [slot('body',['appliance'],'app_white')];
+    f.againstWall = true;
+    if (def.id === 'threeway_fridge') f.propane = true;
+  } else if (def.features?.toilet) {
+    def.slots = [slot('body',['appliance'],'app_white')];
+    if (def.id === 'wet_bath') f.flatpack = true;
+  } else if (def.id === 'van_bed' || def.id === 'double_bed') { def.slots = bedding(); f.flatpack = true; }
+  else if (def.id === 'dinette') {
+    f.flatpack = true;
+    f.states = [{id:'dinette',label:'Dinette',footprint:[1.8,1],height:.9,travel:true},{id:'bed',label:'Bed',footprint:[1.8,1],height:.55,bed:true,travel:false}];
+    def.slots = [slot('cushions',['upholstery'],'uph_linen'),slot('frame',['frame'],'cab_white_oak'),slot('table',['counter'],'counter_butcher')];
+  } else if (def.id === 'folding_table') {
+    f.flatpack = true; f.againstWall = true; f.footprint = [.7,.1];
+    f.states = [{id:'folded',label:'Folded',footprint:[.7,.1],height:.75,travel:true},{id:'open',label:'Open',footprint:[.7,.6],height:.75,travel:false}];
+    def.slots = [top(),slot('legs',['metal'],'metal_black')];
+  } else if (def.id === 'swivel_chair') def.slots = [slot('upholstery',['upholstery'],'uph_linen','#5a7a9a'),slot('base',['metal'],'metal_black')];
+  else if (def.id === 'bookshelf') { f.flatpack = true; def.slots = [slot('carcass',['cabinet'],'cab_white_oak')]; }
+  else if (def.id === 'rug') {
+    def.family = {id:'rug',defaults:{size:'m'},options:{size:['s','m','l','runner']}};
+    f.footprint = [.9,1.5]; def.mass = 2.025; def.price = 63.75;
+    def.slots = [slot('rug',['rug'],'rug_kilim','#b84a3a')];
+  }
+  // The plant has no editable material slot and retains its exact +1 comfort contribution.
+}
+
+function cabinet(id: string, name: string, family: FamilySpec, wall = false): ItemDef {
+  const c = family.defaults;
+  const w = c.w!, h = c.h!, d = c.d!;
+  const hasTop = family.type === 'base' || family.type === 'drawers';
+  return {id,name,category:'furniture',price:0,mass:0,dims:[Math.max(w,h),d,.12],description:'Configurable secure RV storage.',family,
+    floor:{footprint:[w,d],height:h,access:[w,wall ? (family.type === 'shelf' ? .6 : .9) : .5],flatpack:true,againstWall:!wall,
+      ...(wall?{mount:'wall',elevation:family.type==='shelf'?1.2:1.45,elevationRange:[family.type==='shelf'?.9:1.3,'clearance']}: {})},
+    storage:{liters:0,maxKg:wall?25:60,secure:true,maxDim:w},model:family.type==='shelf'?'shelf':'cabinet',
+    slots:family.type==='shelf'?[cabinetSlots()[0]]:[...cabinetSlots(),...(hasTop?[slot(family.type==='base'?'counter':'top',['counter','cabinet'],family.type==='base'?'counter_butcher':'cab_white_oak')]:[])]};
+}
+const cabinetOptions: FamilySpec['options'] = {drawers:[2,3,4,5],shelves:[0,1,2,3,4,5,6],style:['slab','shaker','louver','beadboard'],handle:['bar','knob','cup','edge','latch']};
+L.push(
+  cabinet('cab_base','Base cabinet',{id:'cabinet',type:'base',w:[.3,1.2,.05],d:[.4,.6,.05],h:[.55,.95,.05],defaults:{w:.6,h:.9,d:.55,front:'doors',shelves:1,style:'slab',handle:'bar'},options:{...cabinetOptions,front:['doors','drawers','mixed','open']}}),
+  cabinet('cab_upper','Upper cabinet',{id:'cabinet',type:'upper',w:[.3,2.4,.05],d:[.28,.38,.02],h:[.3,.6,.05],defaults:{w:.8,h:.45,d:.33,front:'doors',shelves:1,style:'slab',handle:'bar'},options:{...cabinetOptions,front:['doors','glass','open']}},true),
+  cabinet('cab_tall','Tall pantry',{id:'cabinet',type:'tall',w:[.3,.7,.05],d:[.35,.6,.05],h:[1.4,'clearance',.05],defaults:{w:.5,h:1.8,d:.5,front:'doors',shelves:4,style:'slab',handle:'bar'},options:{...cabinetOptions,front:['doors','glass']}}),
+  cabinet('cab_wardrobe','Wardrobe',{id:'cabinet',type:'wardrobe',w:[.5,1,.05],d:[.5,.65,.05],h:[1.7,'clearance',.05],defaults:{w:.6,h:1.9,d:.6,front:'doors',style:'louver',handle:'bar'},options:{...cabinetOptions,front:['doors']}}),
+  cabinet('cab_drawers','Drawer chest',{id:'cabinet',type:'drawers',w:[.4,.9,.05],d:[.4,.55,.05],h:[.6,1,.05],defaults:{w:.6,h:.8,d:.45,front:'drawers',drawers:4,style:'slab',handle:'bar'},options:{...cabinetOptions,front:['drawers']}}),
+  cabinet('cab_open_shelf','Lipped open shelf',{id:'cabinet',type:'shelf',w:[.4,1.2,.05],d:[.18,.3,.02],h:[.3,1,.05],defaults:{w:.8,h:.5,d:.25,front:'open',shelves:2},options:{shelves:[0,1,2,3,4,5,6],front:['open']}},true),
+);
+
+function place(id: string,name: string,fp:[number,number],height:number,mass:number,price:number,model:string,extra:Partial<ItemDef>={}): ItemDef {
+  return {id,name,category:'furniture',price,mass,dims:[fp[0],fp[1],height],description:name+'.',model,floor:{footprint:fp,height,flatpack:true},...extra};
+}
+L.push(
+  place('sofa_lounge','Lounge sofa',[1.6,.85],.82,47.6,892,'dinette',{family:{id:'sofa',w:[1.2,2,.1],d:[.8,.95,.05],defaults:{w:1.6,d:.85,arms:'track',legs:'tapered'},options:{arms:['track','round','none'],legs:['tapered','block','metal','plinth']}},features:{seat:{comfort:4},comfort:2},slots:[slot('body',['upholstery'],'uph_linen'),slot('cushions',['upholstery'],'uph_linen'),slot('piping',['upholstery'],'uph_linen'),slot('legs',['frame','metal'],'cab_walnut')]}),
+  place('sofa_jackknife','Jackknife sofa bed',[1.7,.82],.9,54.4,1160,'dinette',{family:{id:'sofa',w:[1.5,1.9,.1],defaults:{w:1.7,d:.82,arms:'none',legs:'plinth'},options:{arms:['none'],legs:['plinth']}},floor:{footprint:[1.7,.82],height:.9,flatpack:true,states:[{id:'sofa',label:'Sofa',footprint:[1.7,.82],height:.9,travel:true},{id:'bed',label:'Bed',footprint:[1.7,1.2],height:.45,bed:true,travel:false}]},features:{bed:{quality:.6,usesMattress:false},seat:{comfort:3}},slots:[slot('body',['upholstery'],'uph_velvet','#3f5a6a'),slot('cushions',['upholstery'],'uph_velvet','#3f5a6a'),slot('base',['frame'],'cab_walnut')]}),
+  place('murphy_bed','Murphy bed (double)',[1.45,.42],1.95,72,1650,'bed',{floor:{footprint:[1.45,.42],height:1.95,flatpack:true,againstWall:true,states:[{id:'stowed',label:'Stowed',footprint:[1.45,.42],height:1.95,travel:true},{id:'bed',label:'Bed',footprint:[1.45,2.05],height:.55,bed:true,travel:false}]},features:{bed:{quality:.74,usesMattress:false}},slots:[slot('cabinet',['cabinet'],'cab_white_oak'),slot('bedding',['upholstery'],'uph_linen')]}),
+  place('bunk_beds','Bunk beds (2 singles)',[1.95,.75],1.75,58,780,'bed',{floor:{footprint:[1.95,.75],height:1.75,flatpack:true,againstWall:true},features:{bed:{quality:.55,usesMattress:false}},slots:bedding()}),
+  place('table_telescoping','Telescoping pedestal table',[.75,.55],.72,12,260,'table',{floor:{footprint:[.75,.55],height:.72,flatpack:true,states:[{id:'dining',label:'Dining',footprint:[.75,.55],height:.72,travel:true},{id:'coffee',label:'Coffee',footprint:[.75,.55],height:.45,travel:true}]},features:{table:{workMul:1}},slots:[top(),base()]}),
+  place('recliner','Wall-hugger recliner',[.78,.82],1.02,38,620,'chair',{floor:{footprint:[.78,.82],height:1.02,flatpack:true,states:[{id:'upright',label:'Upright',footprint:[.78,.82],height:1.02,travel:true},{id:'reclined',label:'Reclined',footprint:[.78,1.45],height:.72,travel:false}]},features:{seat:{comfort:4},comfort:2},slots:[slot('upholstery',['upholstery'],'uph_faux_leather','#4a3a30'),slot('base',['frame'],'cab_walnut')]}),
+  place('theater_seats','RV theater seating (pair)',[1.6,.85],1.05,76,1450,'dinette',{floor:{footprint:[1.6,.85],height:1.05,flatpack:true,states:[{id:'upright',label:'Upright',footprint:[1.6,.85],height:1.05,travel:true},{id:'reclined',label:'Reclined',footprint:[1.6,1.5],height:.75,travel:false}]},features:{seat:{comfort:5},comfort:3},slots:[slot('upholstery',['upholstery'],'uph_faux_leather','#3a2e2a'),slot('console',['cabinet'],'cab_walnut')]}),
+  place('ottoman','Storage ottoman',[.6,.45],.42,8,120,'chair',{storage:{liters:45,maxKg:20,secure:true},features:{seat:{comfort:1}},slots:[slot('upholstery',['upholstery'],'uph_linen')]}),
+  place('storage_bench','Entry storage bench',[.9,.4],.46,14,160,'cabinet',{floor:{footprint:[.9,.4],height:.46,flatpack:true,againstWall:true},storage:{liters:90,maxKg:35,secure:true},features:{seat:{comfort:1}},slots:[slot('cabinet',['cabinet'],'cab_white_oak'),slot('cushion',['upholstery'],'uph_linen')]}),
+  place('wall_art','Framed print',[.5,.03],.4,1.4,45,'box',{floor:{footprint:[.5,.03],height:.4,mount:'wall',elevation:1.35},features:{comfort:1},slots:[slot('frame',['frame','metal'],'metal_black'),slot('print',['decor'],'art_desert')]}),
+  place('fridge_drawer','Drawer fridge base (65 L)',[.6,.58],.9,26,1150,'fridge',{category:'appliance',dims:[.62,.6,.9],floor:{footprint:[.6,.58],height:.9,againstWall:true,access:[.6,.5]},storage:{liters:65,maxKg:30,secure:true,refrigerated:true},features:{fridge:{liters:65,mode:'12v',watts:30}},slots:[slot('front',['appliance'],'app_stainless'),slot('counter',['counter'],'counter_butcher')]}),
+  place('fridge_12v_10cf','12 V fridge, 10 cu ft (283 L)',[.6,.66],1.52,58,1650,'fridge',{category:'appliance',dims:[1.52,.6,.66],floor:{footprint:[.6,.66],height:1.52,againstWall:true,access:[.6,.55]},storage:{liters:283,maxKg:90,secure:true,refrigerated:true},features:{fridge:{liters:283,mode:'12v',watts:45}},slots:[slot('body',['appliance'],'app_black')]}),
+  place('fridge_residential','Residential French-door fridge (18 cu ft)',[.76,.79],1.68,95,1350,'fridge',{category:'appliance',dims:[1.68,.76,.79],floor:{footprint:[.76,.79],height:1.68,againstWall:true,access:[.76,.55],ac:{watts:160,minInverter:1000}},storage:{liters:510,maxKg:130,secure:true,refrigerated:true},features:{fridge:{liters:510,mode:'120v',watts:75}},slots:[slot('body',['appliance'],'app_stainless')]}),
+  place('microwave','Microwave (0.9 cu ft)',[.5,.36],.29,13,240,'box',{category:'appliance',floor:{footprint:[.5,.36],height:.29,mount:'wall',elevation:1.35,ac:{watts:1000,minInverter:1000}},features:{microwave:{watts:1000,minutes:6}},slots:[slot('body',['appliance'],'app_stainless')]}),
+  place('range_hood','Range hood (12 V fan + light)',[.55,.3],.14,3.5,140,'box',{category:'appliance',floor:{footprint:[.55,.3],height:.14,mount:'wall',elevation:1.3},features:{hood:true},light:{kind:'strip',lumens:120,watts:2,dimmable:false,kelvin:[3000,3000]},slots:[slot('body',['appliance','metal'],'app_stainless')]}),
+  place('wet_bath_deluxe','Wet bath (porcelain toilet + rain shower)',[.95,.85],2,92,2400,'wetbath',{category:'appliance',floor:{footprint:[.95,.85],height:2,plumbing:true,needsBlackTank:true,flatpack:true,access:[.6,.5]},features:{toilet:{kind:'plumbed'},shower:{liters:15,heater:'propane'}},slots:[slot('walls',['appliance'],'app_white'),slot('fixtures',['metal'],'metal_black')]}),
+);
+
+const lights: [string,string,[number,number],number,number,number,NonNullable<ItemDef['light']>,number?][] = [
+  ['light_dome','Dome light (factory)',[.3,.3],.06,.5,35,{kind:'ceiling',lumens:420,watts:5,dimmable:false,kelvin:[3000,3000]}],
+  ['light_flush','Modern flush light',[.32,.32],.05,.7,65,{kind:'ceiling',lumens:600,watts:6,dimmable:true,kelvin:[2700,4000]}],
+  ['light_puck','Recessed LED puck',[.09,.09],.02,.1,18,{kind:'recessed',lumens:200,watts:2.5,dimmable:true,kelvin:[2700,5000]}],
+  ['light_pendant','Mini pendant',[.2,.2],.38,1.1,85,{kind:'pendant',lumens:320,watts:4,dimmable:true,kelvin:[2200,2700]}],
+  ['light_sconce','Wall sconce',[.14,.12],.22,.6,45,{kind:'wall',lumens:260,watts:3,dimmable:true,kelvin:[2700,3000]},1.45],
+  ['light_reading','Swivel reading light',[.1,.16],.12,.3,32,{kind:'reading',lumens:180,watts:2,dimmable:true,kelvin:[3000,4000],beam:45},1.2],
+  ['light_undercab','Under-cabinet LED strip',[.6,.04],.012,.072,27,{kind:'strip',lumens:320,watts:4,dimmable:true,kelvin:[2700,6000]},1.43],
+  ['light_accent','RGB accent strip',[1,.04],.012,.12,35,{kind:'accent',lumens:150,watts:2.5,dimmable:true,kelvin:[2700,6500],rgb:true},.06],
+];
+for (const [id,name,fp,h,mass,price,light,elevation] of lights) L.push(place(id,name,fp,h,mass,price,'box',{
+  category:'fixture',light,floor:{footprint:fp,height:h,mount:elevation===undefined?'ceiling':'wall',...(elevation===undefined?{}:{elevation})},
+  ...(['light_undercab','light_accent'].includes(id)?{family:{id:'strip',defaults:{length:fp[0]},options:{length:[.3,.4,.5,.6,.7,.8,.9,1,1.1,1.2,1.3,1.4,1.5]}}} as Partial<ItemDef>:{}),
+  slots:[slot(id==='light_flush'?'trim':id==='light_pendant'?'shade':'body',['metal'],'metal_nickel')],
+}));
+L.push({id:'light_awning',name:'Awning LED strip',category:'fixture',price:65,mass:.5,dims:[.3,.2,.05],description:'Warm light along the awning.',model:'box',slot:{kind:'electronics',size:.5},light:{kind:'exterior',lumens:600,watts:7,dimmable:false,kelvin:[3000,3000]},slots:[slot('body',['metal'],'metal_nickel')]});
+L.push(
+  {id:'lithium_200',name:'Lithium battery 200 Ah',category:'system',mass:22,price:1150,dims:[.52,.24,.22],slot:{kind:'battery',size:2},features:{battery:{wh:2400}},description:'A larger lithium house battery.',model:'battery'},
+  {id:'lithium_300',name:'Lithium battery 300 Ah',category:'system',mass:31,price:1600,dims:[.52,.27,.24],slot:{kind:'battery',size:2},features:{battery:{wh:3600}},description:'High-capacity lithium storage.',model:'battery'},
+  {id:'inverter_1000',name:'1000 W inverter',category:'system',mass:3.5,price:180,dims:[.3,.2,.1],slot:{kind:'electronics',size:1},features:{inverter:{watts:1000,idleW:6}},description:'Runs small AC appliances.',model:'box'},
+  {id:'inverter_charger',name:'3000 W inverter/charger',category:'system',mass:25,price:1350,dims:[.5,.3,.2],slot:{kind:'electronics',size:2},features:{inverter:{watts:3000,idleW:18},charger:{watts:1400}},description:'Powerful AC supply and shore charger.',model:'box'},
+  {id:'mppt',name:'MPPT solar controller',category:'system',mass:1.6,price:160,dims:[.2,.15,.08],slot:{kind:'electronics',size:1},features:{mppt:{efficiency:.92}},description:'Improves solar harvest efficiency.',model:'box'},
+  {id:'solar_400',name:'400 W rigid solar panel',category:'system',mass:22,price:480,dims:[1.95,1.13,.04],slot:{kind:'roof',size:2.4},features:{solar:{watts:400}},description:'A large roof-mounted solar panel.',model:'solar'},
+);
+
+const catalog = L.filter(d=>!['small_cabinet','tall_cabinet','wardrobe'].includes(d.id));
+export const ITEMS: Record<string, ItemDef> = Object.fromEntries(catalog.map((d) => [d.id, d]));
+export const ITEM_LIST: readonly ItemDef[] = catalog;
 
 /** A generic definition used for delivery crates (their real data lives on the instance). */
 export const CARGO_DEF: ItemDef = {

@@ -2,6 +2,8 @@ import { DENSITY, OVERLOAD, PERSON_MASS } from '../data/config';
 import { dFromZ } from '../data/vehicles';
 import type { GameState } from './types';
 import { capacities, compartments, defOf, itemKg, itemName, itemsInVehicle, vdef, vehicleById } from './vehicle';
+import { materialDef } from '../data/materials';
+import { coveringMass, surfaceGeometry, windowD } from './finishes';
 
 // Gross weight and axle loads from first principles: every mass element has a
 // longitudinal position d (m behind the front axle). Rear axle load is the
@@ -9,12 +11,12 @@ import { capacities, compartments, defOf, itemKg, itemName, itemsInVehicle, vdef
 
 export type WeightCat =
   | 'vehicle' | 'equipment' | 'furniture' | 'belongings' | 'passengers' | 'supplies'
-  | 'fuel' | 'fresh' | 'gray' | 'black' | 'propane' | 'cargo';
+  | 'fuel' | 'fresh' | 'gray' | 'black' | 'propane' | 'cargo' | 'finishes';
 
 export const WEIGHT_CAT_LABEL: Record<WeightCat, string> = {
   vehicle: 'Base vehicle', equipment: 'Installed equipment', furniture: 'Furniture', belongings: 'Personal belongings',
   passengers: 'Passengers', supplies: 'Food & supplies', fuel: 'Fuel', fresh: 'Fresh water', gray: 'Gray water',
-  black: 'Black water', propane: 'Propane', cargo: 'Delivery cargo',
+  black: 'Black water', propane: 'Propane', cargo: 'Delivery cargo', finishes: 'Interior finishes',
 };
 
 export interface MassEl {
@@ -51,6 +53,7 @@ function catForItem(category: string): WeightCat {
   switch (category) {
     case 'appliance':
     case 'system':
+    case 'fixture':
       return 'equipment';
     case 'furniture':
     case 'mattress':
@@ -84,6 +87,17 @@ export function computeWeight(s: GameState, vid: string, o: MassOverride = {}): 
   const els: MassEl[] = [];
   els.push({ label: def.shortName, cat: 'vehicle', kg: def.shellMass, d: def.shellD });
   els.push({ label: 'Driver', cat: 'passengers', kg: PERSON_MASS, d: dFromZ(def, def.interior.driverSeat.z) });
+  for (const surface of def.interior.surfaces) {
+    const { area, d } = surfaceGeometry(def, surface);
+    const current = v.custom.surfaces[surface.id] ?? surface.factory;
+    const kg = (materialDef(current.mat).kgPerM2 - materialDef(surface.factory.mat).kgPerM2) * area;
+    if (kg !== 0) els.push({ label: surface.name, cat: 'finishes', kg, d });
+  }
+  for (const window of def.interior.windows) {
+    if (window.door) continue;
+    const kg = coveringMass(window, v.custom.windows[window.id] ?? window.factory) - coveringMass(window, window.factory);
+    if (kg !== 0) els.push({ label: `${window.id} covering`, cat: 'finishes', kg, d: windowD(def, window) });
+  }
 
   const comps = compartments(s, vid);
   const compD: Record<string, number> = {};

@@ -8,8 +8,9 @@ import { localToWorld } from './geo';
 import { bestCompartment } from './storage';
 import type { GameState, Look, VehicleState } from './types';
 import { capacities } from './vehicle';
+import { factoryCustom } from './finishes';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface NewGameOptions {
   name: string;
@@ -17,6 +18,7 @@ export interface NewGameOptions {
   vehicle: VehicleId;
   difficulty: DifficultyId;
   seed: number;
+  gameType?: 'life' | 'creative';
 }
 
 /** Creates a vehicle with its factory equipment installed. */
@@ -24,7 +26,7 @@ export function setupNewVehicle(s: GameState, defId: VehicleId, pose: { x: numbe
   const def = VEHICLES[defId];
   const id = `v${++s.uidCounter}`;
   const v: VehicleState = {
-    id, def: defId, pose: { ...pose },
+    id, def: defId, pose: { ...pose }, custom: factoryCustom(def),
     fuel: def.tanks.fuel.liters * ECONOMY.startFuel,
     fresh: def.tanks.fresh.liters * ECONOMY.startFresh,
     gray: def.id === 'van' ? 6 : 10,
@@ -42,7 +44,9 @@ export function setupNewVehicle(s: GameState, defId: VehicleId, pose: { x: numbe
   for (const d of def.defaults) {
     if ('slot' in d) newItem(s, d.item, { kind: 'slot', vehicle: id, slot: d.slot }, { condition: def.startCondition.appliances });
     else {
-      const bed = newItem(s, d.item, { kind: 'floor', vehicle: id, x: d.x, z: d.z, rot: d.rot }, { condition: def.startCondition.appliances });
+      const bed = newItem(s, d.item, { kind: 'floor', vehicle: id, x: d.x, z: d.z, rot: d.rot, ...(d.y === undefined ? {} : { y: d.y }) }, {
+        condition: def.startCondition.appliances, config: d.config, finish: d.finish ? structuredClone(d.finish) : undefined, state: d.state,
+      });
       if (d.mattress) newItem(s, d.mattress, { kind: 'mattress', vehicle: id, bed: bed.uid }, { condition: 0.7 });
     }
   }
@@ -59,6 +63,7 @@ export function newGame(opts: NewGameOptions): GameState {
   const diff = DIFFICULTIES[opts.difficulty];
   const s: GameState = {
     version: SAVE_VERSION,
+    gameType: opts.gameType ?? 'life',
     seed: opts.seed >>> 0,
     difficulty: opts.difficulty,
     time: { minutes: TIME.startMinutes },

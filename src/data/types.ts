@@ -8,6 +8,7 @@ export type ItemCategory =
   | 'part'
   | 'furniture'
   | 'appliance'
+  | 'fixture'
   | 'system'
   | 'mattress'
   | 'outdoor'
@@ -16,6 +17,55 @@ export type ItemCategory =
 export type SlotKind = 'battery' | 'roof' | 'tank' | 'generator' | 'electronics' | 'awning';
 
 export type ComponentId = 'engine' | 'steering' | 'brakes' | 'appliances';
+
+export type SurfaceKind = 'floor' | 'wall' | 'ceiling' | 'trim' | 'cabinet' | 'counter' | 'upholstery' | 'window' | 'metal' | 'frame' | 'appliance' | 'rug' | 'decor';
+export type MaterialPattern = 'plank' | 'sheet' | 'tile' | 'carpet' | 'rubber' | 'cork' | 'paint' | 'wallpaper' | 'fabric' | 'leather' | 'wood' | 'laminate' | 'stone' | 'metal' | 'plastic' | 'textured';
+export interface MaterialDef {
+  id: string; name: string; group: string; surfaces: SurfaceKind[]; pattern: MaterialPattern; motif?: string;
+  color: string; color2?: string; roughness: number; metalness?: number;
+  kgPerM2: number; pricePerM2: number; laborPerM2: number; repeat: [number, number];
+  plank?: { widths: number[]; lengths: number[] }; transmission?: number; appeal: number; tintable: boolean;
+  sheen?: number; clearcoat?: number;
+}
+export interface Finish {
+  mat: string; color?: string; color2?: string; scale?: number; rot?: 0 | 90; offset?: [number, number];
+  plankW?: number; plankL?: number; roughness?: number;
+}
+export interface SurfaceDef {
+  id: string; kind: 'floor' | 'wall' | 'ceiling' | 'trim'; name: string; rect?: Rect;
+  wall?: { side: 'left' | 'right' | 'rear' | 'front'; a0: number; a1: number }; factory: Finish;
+}
+export type CoveringType = 'none' | 'curtains' | 'sheer' | 'blackout_roller' | 'solar_roller' | 'pleated' | 'day_night' | 'roman' | 'insulated' | 'privacy_screen';
+export interface WindowTreatment {
+  type: CoveringType; fabric: Finish; fabric2?: Finish; valance?: Finish | null;
+  hardware: 'white' | 'black' | 'brass' | 'chrome' | 'wood'; mount: 'inside' | 'outside';
+  length?: 'sill' | 'long'; open: number; layer?: 'day' | 'night';
+}
+export interface CoveringSpec {
+  type: CoveringType; name: string; description: string; basePrice: number; pricePerM2: number;
+  kgPerM2: number; laborMin: number; fabrics: string[]; fabrics2?: string[];
+  defaultFabric: string; defaultFabric2?: string;
+}
+export type MountKind = 'floor' | 'wall' | 'ceiling';
+export interface StateSpec {
+  id: string; label: string; footprint: [number, number]; height: number; access?: [number, number]; travel: boolean; bed?: boolean;
+}
+export interface MaterialSlotDef { id: string; label: string; surfaces: SurfaceKind[]; default: Finish }
+export interface ItemConfig {
+  w?: number; h?: number; d?: number; front?: 'doors' | 'drawers' | 'mixed' | 'open' | 'glass';
+  doors?: number; drawers?: number; shelves?: number; style?: 'slab' | 'shaker' | 'louver' | 'beadboard';
+  handle?: 'bar' | 'knob' | 'cup' | 'edge' | 'latch'; arms?: 'track' | 'round' | 'none';
+  legs?: 'tapered' | 'block' | 'metal' | 'plinth'; length?: number; size?: string;
+}
+export interface FamilySpec {
+  id: 'cabinet' | 'sofa' | 'rug' | 'strip'; type?: 'base' | 'upper' | 'tall' | 'wardrobe' | 'drawers' | 'shelf';
+  w?: [number, number, number]; h?: [number, number | 'clearance', number]; d?: [number, number, number];
+  options?: Partial<Record<keyof ItemConfig, (string | number)[]>>; defaults: ItemConfig;
+}
+export interface LightSpec {
+  kind: 'ceiling' | 'recessed' | 'pendant' | 'wall' | 'reading' | 'strip' | 'accent' | 'exterior';
+  lumens: number; watts: number; dimmable: boolean; kelvin: [number, number]; rgb?: boolean; beam?: number;
+}
 
 export interface FoodSpec {
   servings: number;
@@ -40,6 +90,14 @@ export interface StorageSpec {
 }
 
 export interface FloorSpec {
+  mount?: MountKind;
+  elevation?: number;
+  elevationRange?: [number, number | 'clearance'];
+  againstWall?: boolean;
+  propane?: boolean;
+  ac?: { watts: number; minInverter: number };
+  states?: StateSpec[];
+  flatpack?: boolean;
   /** [width side-to-side, depth front-to-back] in meters at rotation 0 (front facing +Z). */
   footprint: [number, number];
   height: number;
@@ -59,7 +117,11 @@ export interface Features {
   seat?: { comfort: number };
   table?: { workMul: number };
   galley?: { sink: boolean; stove: 'butane' | 'propane' | 'induction' | null };
-  fridge?: { liters: number; mode: '12v' | '3way'; watts: number; propaneKgPerDay?: number };
+  fridge?: { liters: number; mode: '12v' | '3way' | '120v'; watts: number; propaneKgPerDay?: number };
+  microwave?: { watts: number; minutes: number };
+  charger?: { watts: number };
+  mppt?: { efficiency: number };
+  hood?: boolean;
   toilet?: { kind: 'cassette' | 'plumbed' | 'composting'; cassetteLiters?: number };
   shower?: { liters: number; heater: 'propane' | 'electric' };
   outdoorShower?: { liters: number };
@@ -84,6 +146,9 @@ export interface Features {
 }
 
 export interface ItemDef {
+  family?: FamilySpec;
+  slots?: MaterialSlotDef[];
+  light?: LightSpec;
   id: string;
   name: string;
   category: ItemCategory;
@@ -138,6 +203,9 @@ export interface TankDef {
 }
 
 export interface WindowDef {
+  id: string;
+  door?: boolean;
+  factory?: WindowTreatment;
   side: 'left' | 'right' | 'rear' | 'front';
   /** Along the wall: z range for side walls, x range for rear/front. */
   a0: number;
@@ -147,6 +215,9 @@ export interface WindowDef {
 }
 
 export interface InteriorDef {
+  surfaces: SurfaceDef[];
+  gas: Rect[];
+  openings: { name: string; w: number; h: number }[];
   floorY: number;
   ceilingY: number;
   /** The chassis cab can sit lower than the coach floor (Class C: a step down into the cab). */
@@ -173,8 +244,8 @@ export interface InteriorDef {
 }
 
 export type DefaultInstall =
-  | { item: string; x: number; z: number; rot: number; mattress?: string }
-  | { item: string; slot: SlotKind };
+  | { item: string; x: number; z: number; rot: number; mattress?: string; y?: number; config?: ItemConfig; finish?: Record<string, Finish>; state?: string; since?: number }
+  | { item: string; slot: SlotKind; since?: number };
 
 export type VehicleId = 'van' | 'classc';
 

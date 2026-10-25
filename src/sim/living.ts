@@ -1,11 +1,13 @@
 import { POWER, PROPANE, TIME, WATER } from '../data/config';
 import { fail, hourOf, note, ok, type Result } from './core';
 import { sleepModifier } from './camping';
+import { closedTransmission, windowArea } from './finishes';
+import { setItemState } from './furnish';
 import { addMood, restore } from './needs';
 import { placeAt } from './places';
 import type { GameState, ItemInstance } from './types';
 import { applyWater, checkWater, foodItems, propaneUse } from './utilities';
-import { activeVehicle, capacities, defOf, hasTool, itemsInVehicle } from './vehicle';
+import { activeVehicle, capacities, defOf, hasTool, itemsInVehicle, vehicleById, vdef } from './vehicle';
 
 // Daily life inside the RV. Every function checks real resources first and
 // returns minutes for the caller to advance time.
@@ -46,7 +48,19 @@ export function stoveCheck(s: GameState, minutes: number): Result {
   return ok();
 }
 
-export function cookCheck(s: GameState, uid: string): Result {
+export type CookingMethod = 'stove' | 'microwave';
+
+export function microwaveCheck(s: GameState): Result {
+  const v = activeVehicle(s);
+  const c = capacities(s, v.id);
+  if (!c.microwave) return fail('There is no working microwave in this RV.');
+  if (v.hookups.power || v.generatorOn) return ok();
+  if (c.inverterW < 1000) return fail('Microwave cooking needs shore power, the generator or an inverter of at least 1,000 W.');
+  if (v.batteryWh < 120) return fail('Microwave cooking needs at least 120 Wh in the battery.');
+  return ok();
+}
+
+export function cookCheck(s: GameState, uid: string, method: CookingMethod = 'stove'): Result {
   const it = s.items[uid];
   const f = it ? defOf(it).food : undefined;
   if (!it || !f) return fail('Choose something to cook.');
@@ -57,21 +71,23 @@ export function cookCheck(s: GameState, uid: string): Result {
   const c = capacities(s, v.id);
   if (!c.sink) return fail('You need a galley with a sink to cook and wash up.');
   if (!hasKitchenware(s)) return fail('You need pots, pans and dishes to cook.');
-  const st = stoveCheck(s, f.cookMinutes ?? 20);
+  const st = method === 'microwave' ? microwaveCheck(s) : stoveCheck(s, f.cookMinutes ?? 20);
   if (!st.ok) return st;
   return checkWater(s, v, { fresh: WATER.cook.fresh, gray: WATER.cook.gray }, 'cooking and washing up');
 }
 
-export function cook(s: GameState, uid: string): Result<Timed> {
-  const chk = cookCheck(s, uid);
+export function cook(s: GameState, uid: string, method: CookingMethod = 'stove'): Result<Timed> {
+  const chk = cookCheck(s, uid, method);
   if (!chk.ok) return chk;
   const v = activeVehicle(s);
   const c = capacities(s, v.id);
   const it = s.items[uid];
   const d = defOf(it);
   const f = d.food!;
-  const minutes = (f.cookMinutes ?? 20) + 8;
-  if (c.stove === 'butane') {
+  const minutes = method === 'microwave' ? 6 : (f.cookMinutes ?? 20) + 8;
+  if (method === 'microwave') {
+    if (!(v.hookups.power || v.generatorOn)) v.batteryWh -= 100;
+  } else if (c.stove === 'butane') {
     const can = butaneCanister(s)!;
     can.uses = (can.uses ?? 1) - 1;
     if ((can.uses ?? 0) <= 0) {
@@ -88,6 +104,10 @@ export function cook(s: GameState, uid: string): Result<Timed> {
   restore(s, 'hunger', f.hunger);
   addMood(s, 'meal', 'Good home-cooked meal', (f.mood ?? 0) + 3, 5);
   return ok({ minutes });
+}
+
+export function microwaveCook(s: GameState, uid: string): Result<Timed> {
+  return cook(s, uid, 'microwave');
 }
 
 export function eat(s: GameState, uid: string): Result<Timed> {
@@ -126,6 +146,41 @@ export interface SleepPlan {
   reasons: string[];
 }
 
+export function setCovering(s: GameState, vid: string, windowId: string, open: number, layer?: 'day' | 'night'): Result {
+  const v = vehicleById(s, vid);
+  const window = vdef(v).interior.windows.find((w) => w.id === windowId);
+  if (!window || window.door) return fail('That window cannot have a covering.');
+  if (!Number.isFinite(open)) return fail('Covering openness must be a finite number.');
+  const treatment = v.custom.windows[windowId] ?? window.factory;
+  if (!treatment || treatment.type === 'none') return fail('That window has no covering.');
+  if (layer != null && layer !== 'day' && layer !== 'night') return fail('Choose the day or night layer.');
+  v.custom.windows[windowId] = { ...treatment, open: Math.max(0, Math.min(1, open)), ...(treatment.type === 'day_night' && layer ? { layer } : {}) };
+  return ok();
+}
+
+/** Prepare the chosen convertible bed before changing any window treatments. */
+export function prepareSleep(s: GameState, nap: boolean): Result<Timed> {
+  const v = activeVehicle(s);
+  let minutes = 0;
+  const bedUid = capacities(s, v.id).bestBed.uid;
+  if (bedUid) {
+    const bed = s.items[bedUid];
+    const sleeping = defOf(bed).floor?.states?.find((st) => st.bed);
+    if (sleeping && bed.state !== sleeping.id) {
+      const changed = setItemState(s, v.id, bed.uid, sleeping.id);
+      if (!changed.ok) return changed;
+      minutes = 2;
+    }
+  }
+  if (!nap) {
+    for (const window of vdef(v).interior.windows) {
+      const treatment = v.custom.windows[window.id] ?? window.factory;
+      if (!window.door && treatment && treatment.type !== 'none') setCovering(s, v.id, window.id, 0, treatment.type === 'day_night' ? 'night' : undefined);
+    }
+  }
+  return ok({ minutes });
+}
+
 export function sleepPlan(s: GameState, nap: boolean): SleepPlan {
   const v = activeVehicle(s);
   const c = capacities(s, v.id);
@@ -147,6 +202,25 @@ export function sleepPlan(s: GameState, nap: boolean): SleepPlan {
   const mod = sleepModifier(s);
   q *= mod.mul;
   reasons.push(...mod.reasons);
+  if (!nap) {
+    let blocked = 0, area = 0;
+    for (const window of vdef(v).interior.windows) {
+      if (window.door) continue;
+      const treatment = v.custom.windows[window.id] ?? window.factory;
+      const a = windowArea(window);
+      const closed = treatment?.type === 'day_night' ? { ...treatment, layer: 'night' as const } : treatment;
+      blocked += a * (1 - closedTransmission(closed));
+      area += a;
+    }
+    const block = area ? blocked / area : 0;
+    if (block >= 0.9) {
+      q *= 1.06;
+      reasons.push('Blackout shades kept the early light out');
+    } else if (block < 0.4) {
+      q *= 0.97;
+      reasons.push('Thin curtains let the dawn in');
+    }
+  }
   if (s.player.needs.hunger < 15) {
     q *= 0.85;
     reasons.push('Hungry');

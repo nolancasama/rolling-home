@@ -81,7 +81,7 @@ export class VehicleView {
     const sig = items
       .map((i) => {
         const w = i.where;
-        if (w.kind === 'floor') return `${i.uid}:f:${w.x.toFixed(2)}:${w.z.toFixed(2)}:${w.rot}:${i.condition < 0.45 ? 1 : 0}`;
+        if (w.kind === 'floor') return `${i.uid}:f:${w.x.toFixed(2)}:${w.z.toFixed(2)}:${w.rot}:${w.y}:${i.state}:${JSON.stringify(i.config)}:${i.condition < 0.45 ? 1 : 0}`;
         if (w.kind === 'slot') return `${i.uid}:s:${w.slot}`;
         if (w.kind === 'mattress') return `${i.uid}:m:${w.bed}`;
         if (w.kind === 'stored' && (w.comp === 'floor' || w.comp === 'roof' || i.cargo || w.comp === 'cabover')) return `${i.uid}:c:${w.comp}`;
@@ -109,7 +109,8 @@ export class VehicleView {
       const d = defOf(it);
       const mat = d.features?.bed?.usesMattress ? mattressOn(s, it.uid) : null;
       const model = buildItemModel(d, { mattress: mat ? defOf(mat) : null, condition: it.condition, blanket: BLANKETS[bi++ % BLANKETS.length] });
-      model.position.set(w.x, floorY, w.z);
+      const elevation = d.floor?.mount === 'ceiling' ? this.def.interior.ceilingY - floorY - d.floor.height : w.y ?? d.floor?.elevation ?? 0;
+      model.position.set(w.x, floorY + elevation, w.z);
       model.rotation.y = (w.rot * Math.PI) / 2;
       model.userData.uid = it.uid;
       this.furniture.add(model);

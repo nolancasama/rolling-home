@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp } from '../sim/geo';
-import { footprint, usePoint } from '../sim/furnish';
+import { footprint, itemElevation, usePoint } from '../sim/furnish';
 import { activeVehicle, defOf, floorItems, itemsInVehicle } from '../sim/vehicle';
 import type { Rect } from '../data/types';
 import type { Game, Mode, ModeId } from './game';
@@ -85,7 +85,7 @@ export class InteriorMode implements Mode {
     const s = this.g.sim!.s;
     const v = activeVehicle(s);
     const items = floorItems(s, v.id);
-    const sig = items.map((i) => (i.where.kind === 'floor' ? `${i.uid}${i.where.x}${i.where.z}${i.where.rot}` : '')).join('|');
+    const sig = items.map((i) => (i.where.kind === 'floor' ? `${i.uid}${i.where.x}${i.where.z}${i.where.rot}${i.where.y}${i.state}${JSON.stringify(i.config)}` : '')).join('|');
     if (!force && sig === this.sig) return;
     this.sig = sig;
     const inr = this.g.phys!.def.interior;
@@ -93,6 +93,7 @@ export class InteriorMode implements Mode {
     for (const it of items) {
       const d = defOf(it);
       if (!d.floor || d.floor.flat || it.where.kind !== 'floor') continue;
+      if (itemElevation(this.g.phys!.def, { ...it.where, uid: it.uid, def: it.def, config: it.config, state: it.state }) >= 1.75) continue;
       this.boxes.push(footprint(d, it.where.x, it.where.z, it.where.rot));
     }
     for (const p of [inr.driverSeat, inr.passengerSeat]) this.boxes.push({ x0: p.x - 0.26, x1: p.x + 0.26, z0: p.z - 0.25, z1: p.z + 0.3 });
