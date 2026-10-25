@@ -168,7 +168,7 @@ describe('2.5D placement', () => {
     newItem(s, 'inverter_1000', { kind: 'slot', vehicle: s.vehicleId, slot: 'electronics' });
     expect(staticIssues(VEHICLES.classc, [fridge], fridge, s).some((issue) => issue.code === 'power')).toBe(false);
     newItem(s, 'lithium_battery', { kind: 'slot', vehicle: s.vehicleId, slot: 'battery' });
-    expect(Object.values(checkLayout(VEHICLES.classc, layoutOf(s, s.vehicleId), s).issues).flat().find((issue) => issue.code === 'mixedbattery')?.severity).toBe('warn');
+    expect(checkLayout(VEHICLES.classc, layoutOf(s, s.vehicleId), s).general.find((issue) => issue.code === 'mixedbattery')?.severity).toBe('warn');
   });
 });
 

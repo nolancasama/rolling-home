@@ -113,8 +113,59 @@ function backWall(vd: VehicleDef, item: LayoutItem, tolerance: number): 'left' |
   return null;
 }
 
+export interface FreeWallSpan {
+  a0: number;
+  a1: number;
+  length: number;
+  before?: string;
+  after?: string;
+}
+
+/** Along-wall coordinates are z on side walls and x on the rear; heights are above the floor. */
+export function freeWallSpan(s: GameState, vid: string, side: 'left' | 'right' | 'rear', at: number, y0: number, y1: number): FreeWallSpan {
+  const vd = vdef(vehicleById(s, vid));
+  const living = vd.interior.living;
+  const start = side === 'rear' ? living.x0 : living.z0;
+  const end = side === 'rear' ? living.x1 : living.z1;
+  const point = Math.max(start, Math.min(end, at));
+  const bottom = Math.min(y0, y1), top = Math.max(y0, y1);
+  const inBand = (low: number, high: number) => Math.min(top, high) - Math.max(bottom, low) > EPS;
+  const occupied: { a0: number; a1: number; name: string }[] = [];
+  const add = (a0: number, a1: number, name: string) => {
+    const lo = Math.max(start, a0), hi = Math.min(end, a1);
+    if (hi > lo) occupied.push({ a0: lo, a1: hi, name });
+  };
+  for (const item of layoutOf(s, vid)) {
+    const d = defs(item), fp = footprint(d, item.x, item.z, item.rot);
+    const y = itemElevation(vd, item);
+    if (!inBand(y, y + d.floor!.height)) continue;
+    // Any footprint touching the wall occupies it, regardless of which way its front faces.
+    const touches = side === 'left' ? Math.abs(fp.x1 - living.x1) <= 0.03 + EPS
+      : side === 'right' ? Math.abs(fp.x0 - living.x0) <= 0.03 + EPS
+        : Math.abs(fp.z0 - living.z0) <= 0.03 + EPS;
+    if (touches) add(side === 'rear' ? fp.x0 : fp.z0, side === 'rear' ? fp.x1 : fp.z1, d.name);
+  }
+  for (const window of vd.interior.windows) {
+    if (window.side === side && inBand(window.y0 - vd.interior.floorY, window.y1 - vd.interior.floorY)) {
+      add(window.a0, window.a1, `Window ${window.id}`);
+    }
+  }
+  const door = vd.interior.door, opening = vd.interior.openings.find((entry) => entry.name === 'entry door') ?? vd.interior.openings[0];
+  if (door.side === side && inBand(0, opening?.h ?? 1.95)) add(door.z0, door.z1, opening?.name ?? 'entry door');
+  // A point in an obstruction has no free interval. Boundary points may start/end a free span.
+  const covering = occupied.find((entry) => point > entry.a0 + EPS && point < entry.a1 - EPS);
+  if (covering) return { a0: point, a1: point, length: 0, before: covering.name, after: covering.name };
+  let a0 = start, a1 = end;
+  let before: string | undefined, after: string | undefined;
+  for (const entry of occupied) {
+    if (entry.a1 <= point + EPS && entry.a1 >= a0) { a0 = entry.a1; before = entry.name; }
+    if (entry.a0 >= point - EPS && entry.a0 <= a1) { a1 = entry.a0; after = entry.name; }
+  }
+  return { a0, a1, length: Math.max(0, a1 - a0), ...(before ? { before } : {}), ...(after ? { after } : {}) };
+}
+
 /** Checks one item against the floor plan and the rest of the layout (no path check). */
-export function staticIssues(vd: VehicleDef, layout: LayoutItem[], item: LayoutItem, s?: GameState): PlacementIssue[] {
+export function staticIssues(vd: VehicleDef, layout: LayoutItem[], item: LayoutItem, s?: GameState, vid?: string): PlacementIssue[] {
   const out: PlacementIssue[] = [];
   const d = defs(item);
   const fp = footprint(d, item.x, item.z, item.rot);
@@ -162,7 +213,8 @@ export function staticIssues(vd: VehicleDef, layout: LayoutItem[], item: LayoutI
   }
   if (myAcc && !inside(myAcc, { ...living, z1: vd.interior.cab.z1 })) issue('access', 'Its front faces a wall.');
   if (d.floor?.ac && s) {
-    const inverter = Object.values(s.items).filter((it) => it.where.kind === 'slot' && it.where.vehicle === s.vehicles.find((v) => v.def === vd.id)?.id).reduce((max, it) => Math.max(max, defOf(it).features?.inverter?.watts ?? 0), 0);
+    const vehicle = layoutVehicleId(s, vd, layout, vid);
+    const inverter = Object.values(s.items).filter((it) => it.where.kind === 'slot' && it.where.vehicle === vehicle).reduce((max, it) => Math.max(max, defOf(it).features?.inverter?.watts ?? 0), 0);
     if (inverter < d.floor.ac.minInverter) issue('power', `Needs 120 V: runs only on shore power or the generator unless you install an inverter of at least ${d.floor.ac.minInverter.toLocaleString('en-US')} W.`, true);
   }
   return out;
@@ -250,34 +302,46 @@ function seatRect(p: { x: number; z: number }): Rect {
 
 export interface LayoutCheck {
   issues: Record<string, PlacementIssue[]>;
+  general: PlacementIssue[];
   cabBlocked: boolean;
   valid: boolean;
 }
 
-export function checkLayout(vd: VehicleDef, layout: LayoutItem[], s?: GameState): LayoutCheck {
+export function checkLayout(vd: VehicleDef, layout: LayoutItem[], s?: GameState, vid?: string): LayoutCheck {
   const issues: Record<string, PlacementIssue[]> = {};
+  const general: PlacementIssue[] = [];
+  const vehicle = s ? layoutVehicleId(s, vd, layout, vid) : vid;
   for (const l of layout) {
-    issues[l.uid] = staticIssues(vd, layout, l, s);
+    issues[l.uid] = staticIssues(vd, layout, l, s, vehicle);
     const states = defs(l).floor?.states;
     const current = states?.find((state) => state.id === l.state) ?? states?.[0];
     for (const state of states ?? []) {
       if (state.id === current?.id) continue;
       const candidate = stateCandidate(l, state.id);
-      const collision = staticIssues(vd, layout, candidate).find((issue) => ['outside', 'overlap', 'door', 'headroom'].includes(issue.code));
+      const collision = staticIssues(vd, layout, candidate, s, vehicle).find((issue) => ['outside', 'overlap', 'door', 'headroom'].includes(issue.code));
       if (collision) issues[l.uid].push({ code: 'deploy', severity: 'warn', text: deploymentText(collision) });
     }
   }
-  if (s && layout.length) {
-    const vid = s.vehicles.find((vehicle) => vehicle.def === vd.id)?.id;
-    const batteries = Object.values(s.items).filter((inst) => inst.where.kind === 'slot' && inst.where.vehicle === vid && !!defOf(inst).features?.battery);
+  if (s) {
+    const batteries = Object.values(s.items).filter((inst) => inst.where.kind === 'slot' && inst.where.vehicle === vehicle && !!defOf(inst).features?.battery);
     if (batteries.some((inst) => inst.def.startsWith('agm')) && batteries.some((inst) => inst.def.startsWith('lithium'))) {
-      issues[layout[0].uid].push({ code: 'mixedbattery', severity: 'warn', text: 'Mixing AGM and lithium shortens battery life.' });
+      general.push({ code: 'mixedbattery', severity: 'warn', text: 'Mixing AGM and lithium shortens battery life.' });
     }
   }
   const r = reachability(vd, layout);
   for (const uid of r.unreachable) issues[uid].push({ code: 'blocked', severity: 'block', text: 'Cannot be reached from the door: the aisle is blocked.' });
-  const valid = Object.values(issues).every((x) => !x.some((issue) => issue.severity === 'block')) && r.cabReachable;
-  return { issues, cabBlocked: !r.cabReachable, valid };
+  const valid = [...Object.values(issues).flat(), ...general].every((issue) => issue.severity !== 'block') && r.cabReachable;
+  return { issues, general, cabBlocked: !r.cabReachable, valid };
+}
+
+/** Legacy callers can infer the instance from their layout; drafts pass it explicitly. */
+function layoutVehicleId(s: GameState, vd: VehicleDef, layout: LayoutItem[], vid?: string): string | undefined {
+  if (vid) return vid;
+  for (const item of layout) {
+    const where = s.items[item.uid]?.where;
+    if (where && 'vehicle' in where) return where.vehicle;
+  }
+  return s.vehicles.some((vehicle) => vehicle.id === s.vehicleId && vehicle.def === vd.id) ? s.vehicleId : undefined;
 }
 
 function deploymentText(issue: PlacementIssue): string {
@@ -309,7 +373,7 @@ export function setItemState(s: GameState, vid: string, uid: string, stateId: st
   const vd = vdef(vehicleById(s, vid));
   const layout = layoutOf(s, vid);
   const candidate = stateCandidate(layout.find((entry) => entry.uid === uid)!, stateId);
-  const collision = staticIssues(vd, layout, candidate, s).find((issue) => ['outside', 'overlap', 'door', 'headroom'].includes(issue.code));
+  const collision = staticIssues(vd, layout, candidate, s, vid).find((issue) => ['outside', 'overlap', 'door', 'headroom'].includes(issue.code));
   if (collision) return fail(deploymentText(collision));
   inst.state = stateId;
   inst.where.x = candidate.x;
@@ -322,7 +386,7 @@ export function checkPlacement(s: GameState, vid: string, cand: LayoutItem): Pla
   const vd = vdef(vehicleById(s, vid));
   const layout = layoutOf(s, vid).filter((l) => l.uid !== cand.uid);
   layout.push(cand);
-  const res = checkLayout(vd, layout, s);
+  const res = checkLayout(vd, layout, s, vid);
   const own = res.issues[cand.uid] ?? [];
   const inst = s.items[cand.uid];
   if (!inst || !('vehicle' in inst.where) || inst.where.vehicle !== vid) {

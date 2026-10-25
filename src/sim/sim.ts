@@ -6,6 +6,7 @@ import * as camping from './camping';
 import { dayOf, fail, journal, note, ok, onNote, type Note, type Result } from './core';
 import { checkDiscoveries, checkVisit } from './discovery';
 import * as furnish from './furnish';
+import * as renovation from './renovation';
 import * as jobs from './jobs';
 import * as living from './living';
 import * as maint from './maintenance';
@@ -306,6 +307,12 @@ export class Sim {
   }
 
   // ── furnishing (time is paused in furnishing mode: no advance) ──
+  beginDesign(): renovation.Draft { return renovation.begin(this.s, this.v.id); }
+  commitDesign(d: renovation.Draft, choice: { pro: boolean }) {
+    const r = renovation.commit(this.s, d, choice);
+    if (r.ok) { this.advance(r.minutes, this.ctxFor(r.activity)); this.changed(); }
+    return r;
+  }
   place(uid: string, x: number, z: number, rot: number) { const r = furnish.placeItem(this.s, this.v.id, uid, x, z, rot); this.changed(); return r; }
   uninstall(uid: string) { const r = furnish.uninstall(this.s, this.v.id, uid); this.changed(); return r; }
   installSlot(uid: string) { const r = furnish.installSlot(this.s, this.v.id, uid); this.changed(); return r; }
