@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import type { VehicleDef, WindowDef } from '../data/types';
 import { frontAxleZ, rearAxleZ } from '../data/vehicles';
-import { GeoBuilder, MAT, shade } from './builder';
-import { fabric, wallPanel, woodFloor } from './textures';
+import { GeoBuilder, MAT } from './builder';
+import { InteriorShell } from './interiorShell';
+import { woodFloor } from './textures';
 
 // Exterior shells from side profiles (z forward, y up) with real window
 // openings, plus interior paneling. Vehicle-local: +Z forward, +X left.
@@ -119,8 +120,8 @@ function rearPanel(halfW: number, z: number, y0: number, y1: number, windows: Wi
   shape.quadraticCurveTo(-halfW, y1, -halfW, y1 - roundTop);
   shape.closePath();
   for (const w of windows.filter((x) => x.side === 'rear')) {
-    // rear view from behind: x = -a (left side is +X, seen on the right from behind)
-    shape.holes.push(new THREE.Path([new THREE.Vector2(w.a0, w.y0), new THREE.Vector2(w.a1, w.y0), new THREE.Vector2(w.a1, w.y1), new THREE.Vector2(w.a0, w.y1)]));
+    // The geometry rotates to face -Z, so negate shape u to retain local x = a.
+    shape.holes.push(new THREE.Path([new THREE.Vector2(-w.a0, w.y0), new THREE.Vector2(-w.a1, w.y0), new THREE.Vector2(-w.a1, w.y1), new THREE.Vector2(-w.a0, w.y1)]));
   }
   const g = new THREE.ShapeGeometry(shape, 3);
   g.rotateY(Math.PI); // face -Z
@@ -501,173 +502,66 @@ export function makeWheel(def: VehicleDef, dual: boolean): THREE.Group {
 
 export interface InteriorParts {
   group: THREE.Group;
-  /** Upper walls and ceiling, hidden in the furnishing cutaway. */
+  /** Protected headliner and cab-over bed, hidden in the furnishing cutaway. */
   upper: THREE.Object3D[];
-  light: THREE.PointLight;
-  lampMat: THREE.MeshStandardMaterial;
+  shell: InteriorShell;
   cabFill: THREE.PointLight;
 }
 
-let floorTex: THREE.Texture | null = null;
-let wallTex: THREE.Texture | null = null;
+let cabFloorTexture: THREE.Texture | null = null;
 
 export function buildInterior(def: VehicleDef): InteriorParts {
-  floorTex ??= woodFloor();
-  wallTex ??= wallPanel();
   const g = new THREE.Group();
+  const shell = new InteriorShell(def);
+  g.add(shell.group);
   const inr = def.interior;
   const hw = inr.halfWidth;
-  const y0 = inr.floorY, y1 = inr.ceilingY;
-  const zBack = inr.living.z0, zCab = inr.cab.z1;
-  const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.75 });
-  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 });
-  const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf6f0e4, roughness: 0.95 });
-  const upper: THREE.Object3D[] = [];
+  const y0 = inr.floorY;
+  const zCab = inr.cab.z1;
   const zEnd = inr.living.z1;
-  // the Class C chassis cab is narrower than the coach and sits a step lower
   const cabHalf = def.id === 'van' ? hw : 1.0;
   const cy0 = inr.cabFloorY;
-  const stepDown = cy0 < y0 - 0.01;
-  // floor
-  const floorPlane = (za: number, zb: number, y: number, half: number, mat: THREE.Material) => {
-    const fl = new THREE.PlaneGeometry(half * 2, zb - za);
-    fl.rotateX(-Math.PI / 2);
-    fl.translate(0, y, (za + zb) / 2);
-    const uv = fl.getAttribute('uv') as THREE.BufferAttribute;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * half * 2 * 0.7, uv.getY(i) * (zb - za) * 0.7);
-    const m = new THREE.Mesh(fl, mat);
-    m.receiveShadow = true;
-    g.add(m);
-  };
-  floorPlane(zBack, stepDown ? zEnd : zCab, y0, hw, floorMat);
-  if (stepDown) {
-    floorPlane(zEnd, zCab, cy0, cabHalf, new THREE.MeshStandardMaterial({ color: 0x3a3a3e, roughness: 0.95 }));
+  const upper: THREE.Object3D[] = [];
+  // Protected cab floor and the coach-to-cab step retain their existing dimensions.
+  const cabFloor = new THREE.PlaneGeometry(cabHalf * 2, zCab - zEnd);
+  cabFloor.rotateX(-Math.PI / 2);
+  cabFloor.translate(0, cy0, (zEnd + zCab) / 2);
+  const cabFloorMat = def.id === 'van'
+    ? new THREE.MeshStandardMaterial({ map: cabFloorTexture ??= woodFloor(), roughness: .75 })
+    : new THREE.MeshStandardMaterial({ color: 0x3a3a3e, roughness: .95 });
+  if (def.id === 'van') {
+    const uv = cabFloor.getAttribute('uv') as THREE.BufferAttribute;
+    for (let n = 0; n < uv.count; n++) uv.setXY(n, uv.getX(n) * cabHalf * 2 * .7, uv.getY(n) * (zCab - zEnd) * .7);
+  }
+  const cabFloorMesh = new THREE.Mesh(cabFloor, cabFloorMat);
+  cabFloorMesh.receiveShadow = true;
+  g.add(cabFloorMesh);
+  if (cy0 < y0 - .01) {
     const riser = new THREE.PlaneGeometry(cabHalf * 2, y0 - cy0);
     riser.translate(0, (y0 + cy0) / 2, zEnd);
-    g.add(new THREE.Mesh(riser, new THREE.MeshStandardMaterial({ color: 0x9a6e46, roughness: 0.8 })));
+    g.add(new THREE.Mesh(riser, new THREE.MeshStandardMaterial({ color: 0x9a6e46, roughness: .8 })));
   }
-  // side walls with window holes (living area only)
-  const wall = (side: 1 | -1) => {
-    const sideName = side === 1 ? 'left' : 'right';
-    // rotateY(-90°) maps shape u → +z (left wall, facing -X); rotateY(+90°) maps u → -z (right wall, facing +X)
-    const u = (z: number) => (side === 1 ? z : -z);
-    const shape = new THREE.Shape([[zBack, y0], [zEnd, y0], [zEnd, y1], [zBack, y1]].map(([z, y]) => new THREE.Vector2(u(z), y)));
-    for (const w of inr.windows.filter((x) => x.side === sideName)) {
-      if (side === -1 && w.a0 >= inr.door.z0 - 0.05 && w.a1 <= inr.door.z1 + 0.05) continue;
-      shape.holes.push(new THREE.Path(rectHole(Math.max(zBack + 0.02, w.a0), Math.min(zEnd - 0.02, w.a1), Math.max(y0 + 0.02, w.y0), Math.min(y1 - 0.02, w.y1)).map(([z, y]) => new THREE.Vector2(u(z), y))));
-    }
-    if (side === -1) {
-      const dz0 = Math.max(zBack + 0.02, inr.door.z0), dz1 = Math.min(zEnd - 0.01, inr.door.z1);
-      shape.holes.push(new THREE.Path(rectHole(dz0, dz1, y0 + 0.01, Math.min(y1 - 0.15, y0 + 1.9)).map(([z, y]) => new THREE.Vector2(u(z), y))));
-    }
-    const geo = new THREE.ShapeGeometry(shape, 2);
-    geo.rotateY(side === 1 ? -Math.PI / 2 : Math.PI / 2);
-    geo.translate(side * hw, 0, 0);
-    const m = new THREE.Mesh(geo, wallMat);
-    m.receiveShadow = true;
-    return m;
-  };
-  const lw = wall(1), rw = wall(-1);
-  g.add(lw, rw);
-  // rear wall
-  const rs = new THREE.Shape([new THREE.Vector2(-hw, y0), new THREE.Vector2(hw, y0), new THREE.Vector2(hw, y1), new THREE.Vector2(-hw, y1)]);
-  for (const w of inr.windows.filter((x) => x.side === 'rear')) rs.holes.push(new THREE.Path(rectHole(w.a0, w.a1, w.y0, w.y1).map(([a, y]) => new THREE.Vector2(-a, y))));
-  const rg = new THREE.ShapeGeometry(rs, 2);
-  rg.translate(0, 0, zBack);
-  const rearW = new THREE.Mesh(rg, wallMat);
-  g.add(rearW);
-  // ceiling (living area)
-  const cg = new THREE.PlaneGeometry(hw * 2, zEnd - zBack);
-  cg.rotateX(Math.PI / 2);
-  cg.translate(0, y1, (zBack + zEnd) / 2);
-  const ceil = new THREE.Mesh(cg, ceilMat);
-  g.add(ceil);
-  // cab ceiling / headliner, from the bulkhead to the top edge of the windshield
   const cabTop = inr.cabCeilingY;
   const wsTopZ = def.id === 'van' ? 1.28 : 2.42;
   const chg = new THREE.PlaneGeometry(cabHalf * 2, wsTopZ - zEnd);
   chg.rotateX(Math.PI / 2);
   chg.translate(0, cabTop, (zEnd + wsTopZ) / 2);
-  const cabCeil = new THREE.Mesh(chg, new THREE.MeshStandardMaterial({ color: 0xd8cfbe, roughness: 0.95 }));
+  const cabCeil = new THREE.Mesh(chg, new THREE.MeshStandardMaterial({ color: 0xd8cfbe, roughness: .95 }));
   g.add(cabCeil);
-  // between the high living ceiling and the lower cab ceiling: a solid bulkhead (van), or the
-  // cab-over bunk (Class C), open to the coach, its platform resting on the cab roof
-  const bulkG = new THREE.Group();
+  upper.push(cabCeil);
   if (inr.cabover) {
-    // platform on the cab-over floor line (y 2.2) and short of the nose, so it stays inside the skin
+    // The existing platform, mattress, blanket and pillows stay unchanged.
     const bz1 = 2.5, my = 2.28, py = 2.205;
     const bunk = new GeoBuilder();
     bunk.box(0, (py + my) / 2, (zEnd + bz1) / 2, hw * 2 - 0.02, my - py, bz1 - zEnd, '#8a6a4a');
-    bunk.box(0, (cabTop + my) / 2, zEnd + 0.012, hw * 2 - 0.02, my - cabTop, 0.02, '#8a6a4a'); // fascia over the cab opening
     bunk.box(0, my + 0.07, (zEnd + bz1) / 2 + 0.05, hw * 2 - 0.2, 0.14, bz1 - zEnd - 0.2, '#e6dccb');
     bunk.box(0, my + 0.145, (zEnd + bz1) / 2 - 0.15, hw * 2 - 0.22, 0.02, bz1 - zEnd - 0.6, '#5a7a9a');
     for (const px of [-0.55, 0.55]) bunk.box(px, my + 0.19, bz1 - 0.3, 0.45, 0.1, 0.28, '#f0ece4');
-    bulkG.add(new THREE.Mesh(bunk.build(), MAT.vc));
-    // bunk side walls (with the cab-over windows), ceiling and front
-    for (const side of [1, -1] as const) {
-      const u = (z: number) => (side === 1 ? z : -z);
-      const sh = new THREE.Shape([[zEnd, my], [bz1, my], [bz1, y1], [zEnd, y1]].map(([z, y]) => new THREE.Vector2(u(z), y)));
-      sh.holes.push(new THREE.Path(rectHole(1.95, 2.45, 2.48, y1 - 0.02).map(([z, y]) => new THREE.Vector2(u(z), y))));
-      const geo = new THREE.ShapeGeometry(sh, 2);
-      geo.rotateY(side === 1 ? -Math.PI / 2 : Math.PI / 2);
-      geo.translate(side * hw, 0, 0);
-      bulkG.add(new THREE.Mesh(geo, wallMat));
-    }
-    const bc = new THREE.PlaneGeometry(hw * 2, bz1 - zEnd);
-    bc.rotateX(Math.PI / 2);
-    bc.translate(0, y1, (zEnd + bz1) / 2);
-    bulkG.add(new THREE.Mesh(bc, ceilMat));
-    const bf = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, y1 - my), wallMat);
-    bf.position.set(0, (y1 + my) / 2, bz1);
-    bf.rotation.y = Math.PI;
-    bulkG.add(bf);
-  } else {
-    const bulkMesh = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, y1 - cabTop), wallMat);
-    bulkMesh.position.set(0, (y1 + cabTop) / 2, zEnd);
-    bulkMesh.rotation.y = Math.PI;
-    bulkG.add(bulkMesh);
+    const bunkMesh = new THREE.Mesh(bunk.build(), MAT.vc);
+    bunkMesh.castShadow = true;
+    g.add(bunkMesh);
+    upper.push(bunkMesh);
   }
-  g.add(bulkG);
-  upper.push(ceil, cabCeil, bulkG);
-  // window frames, curtains, trim, lights
-  const d = new GeoBuilder();
-  const curtain = new THREE.MeshStandardMaterial({ map: fabric('#c8673e', '#e8a060'), roughness: 1 });
-  const cb = new GeoBuilder(true);
-  for (const w of inr.windows) {
-    if (w.side === 'rear') {
-      // frame bars around the opening (not a panel over it)
-      const cx = (w.a0 + w.a1) / -2, cy = (w.y0 + w.y1) / 2, ww = w.a1 - w.a0, wh = w.y1 - w.y0;
-      d.box(cx, w.y0 - 0.025, zBack + 0.02, ww + 0.1, 0.05, 0.03, '#b88a5a');
-      d.box(cx, w.y1 + 0.025, zBack + 0.02, ww + 0.1, 0.05, 0.03, '#b88a5a');
-      d.box(cx - ww / 2 - 0.025, cy, zBack + 0.02, 0.05, wh, 0.03, '#b88a5a');
-      d.box(cx + ww / 2 + 0.025, cy, zBack + 0.02, 0.05, wh, 0.03, '#b88a5a');
-      continue;
-    }
-    if (w.side === 'right' && w.a0 >= inr.door.z0 - 0.05 && w.a1 <= inr.door.z1 + 0.05) continue;
-    const x = (w.side === 'left' ? 1 : -1) * (hw - 0.015);
-    const zc = (w.a0 + w.a1) / 2;
-    for (const yy of [w.y0 - 0.03, w.y1 + 0.03]) d.box(x, yy, zc, 0.04, 0.05, w.a1 - w.a0 + 0.1, '#b88a5a');
-    // curtains gathered at both ends
-    const cx = (w.side === 'left' ? 1 : -1) * (hw - 0.05);
-    for (const zz of [w.a0 - 0.08, w.a1 + 0.08]) {
-      cb.quad(cx, (w.y0 + w.y1) / 2 + 0.05, zz, 0.2, w.y1 - w.y0 + 0.25, '#ffffff', w.side === 'left' ? -Math.PI / 2 : Math.PI / 2);
-    }
-  }
-  // wall trim strips at floor and ceiling
-  for (const side of [1, -1]) {
-    d.box(side * (hw - 0.012), y0 + 0.05, (zBack + zEnd) / 2, 0.03, 0.1, zEnd - zBack, '#9a6e46');
-  }
-  d.box(0, y0 + 0.05, zBack + 0.012, hw * 2, 0.1, 0.03, '#9a6e46');
-  const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff6e0, emissive: 0xffd090, emissiveIntensity: 0.3 });
-  const lamps = new GeoBuilder();
-  for (let z = zBack + 0.8; z < zEnd - 0.2; z += 1.4) lamps.cyl(0, y1 - 0.015, z, 0.09, 0.02, '#ffffff', 12);
-  const trim = new THREE.Mesh(d.build(), MAT.vc);
-  g.add(trim);
-  const ctn = new THREE.Mesh(cb.build(), curtain);
-  g.add(ctn);
-  const lampMesh = new THREE.Mesh(lamps.build(), lampMat);
-  g.add(lampMesh);
-  upper.push(lampMesh);
   // cab: seats, dashboard, wheel
   const cab = new GeoBuilder();
   const seatCol = '#4a4a50';
@@ -704,14 +598,9 @@ export function buildInterior(def: VehicleDef): InteriorParts {
   wheelG.rotation.x = -0.45;
   wheelG.name = 'steering';
   g.add(wheelG);
-  // interior light
-  const light = new THREE.PointLight(0xffd8a0, 0, 7, 1.4);
-  light.position.set(0, y1 - 0.25, (zBack + zEnd) / 2);
-  g.add(light);
   // daylight bounced in through the windshield (the roof blocks direct sun)
   const cabFill = new THREE.PointLight(0xfff0dc, 0, 4.5, 1.1);
   cabFill.position.set(0, cabTop - 0.45, inr.driverSeat.z); // above the seats: its hot spot stays out of the driver's view
   g.add(cabFill);
-  void shade;
-  return { group: g, upper, light, lampMat, cabFill };
+  return { group: g, upper, shell, cabFill };
 }
