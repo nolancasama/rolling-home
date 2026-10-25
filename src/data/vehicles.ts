@@ -1,12 +1,24 @@
 import type { Finish, SurfaceDef, VehicleDef, VehicleId, WindowTreatment } from './types';
 
 const factoryCabinet: Record<string, Finish> = {
-  carcass:{mat:'cab_honey_oak'},fronts:{mat:'cab_honey_oak'},handles:{mat:'metal_brass_factory'},counter:{mat:'counter_factory'},
+  carcass: { mat: 'cab_honey_oak' },
+  fronts: { mat: 'cab_honey_oak' },
+  handles: { mat: 'metal_brass_factory' },
+  counter: { mat: 'counter_factory' },
 };
+
 function factoryCurtain(van: boolean): WindowTreatment {
-  return {type:'curtains',fabric:{mat:van?'win_factory_gingham':'win_factory_print'},
-    ...(van?{}:{valance:{mat:'win_factory_quilted'}}),hardware:van?'white':'wood',mount:van?'inside':'outside',length:'sill',open:1};
+  return {
+    type: 'curtains',
+    fabric: { mat: van ? 'win_factory_gingham' : 'win_factory_print' },
+    ...(van ? {} : { valance: { mat: 'win_factory_quilted' } }),
+    hardware: van ? 'white' : 'wood',
+    mount: van ? 'inside' : 'outside',
+    length: 'sill',
+    open: 1,
+  };
 }
+
 function surfaces(van: boolean): SurfaceDef[] {
   const half = van?.94:1.14;
   // [id, z0, z1, factory floor, player-facing area name]
@@ -123,7 +135,10 @@ const VAN: VehicleDef = {
   interior: {
     surfaces: surfaces(true),
     gas: [],
-    openings: [{name:'side door',w:1.05,h:1.3},{name:'rear doors',w:1.4,h:1.25}],
+    openings: [
+      { name: 'side door', w: 1.05, h: 1.3 },
+      { name: 'rear doors', w: 1.4, h: 1.25 },
+    ],
     floorY: 0.55,
     ceilingY: 2.42,
     cabFloorY: 0.55,
@@ -142,23 +157,32 @@ const VAN: VehicleDef = {
     driverSeat: { x: 0.48, z: 1.25 },
     passengerSeat: { x: -0.48, z: 1.25 },
     windows: [
-      { id:'L1',side: 'left', a0: -2.3, a1: -1.3, y0: 1.3, y1: 1.95, factory:factoryCurtain(true) },
-      { id:'L2',side: 'left', a0: -0.9, a1: 0.45, y0: 1.3, y1: 1.95, factory:factoryCurtain(true) },
-      { id:'R1',side: 'right', a0: -2.3, a1: -1.3, y0: 1.3, y1: 1.95, factory:factoryCurtain(true) },
-      { id:'D1',door:true,side: 'right', a0: -0.25, a1: 0.6, y0: 1.3, y1: 1.95 },
-      { id:'B1',side: 'rear', a0: -0.75, a1: -0.12, y0: 1.35, y1: 1.95, factory:factoryCurtain(true) },
-      { id:'B2',side: 'rear', a0: 0.12, a1: 0.75, y0: 1.35, y1: 1.95, factory:factoryCurtain(true) },
+      { id: 'L1', side: 'left', a0: -2.3, a1: -1.3, y0: 1.3, y1: 1.95, factory: factoryCurtain(true) },
+      { id: 'L2', side: 'left', a0: -0.9, a1: 0.45, y0: 1.3, y1: 1.95, factory: factoryCurtain(true) },
+      { id: 'R1', side: 'right', a0: -2.3, a1: -1.3, y0: 1.3, y1: 1.95, factory: factoryCurtain(true) },
+      { id: 'D1', door: true, side: 'right', a0: -0.25, a1: 0.6, y0: 1.3, y1: 1.95 },
+      { id: 'B1', side: 'rear', a0: -0.75, a1: -0.12, y0: 1.35, y1: 1.95, factory: factoryCurtain(true) },
+      { id: 'B2', side: 'rear', a0: 0.12, a1: 0.75, y0: 1.35, y1: 1.95, factory: factoryCurtain(true) },
     ],
   },
   defaults: [
-    { item: 'van_bed', x: 0, z: -2.09, rot: 0, mattress: 'foam_van',finish:{frame:{mat:'cab_honey_oak'},bedding:{mat:'uph_plaid'}} },
-    { item: 'van_galley', x: 0.665, z: -0.15, rot: 3,finish:factoryCabinet },
+    {
+      item: 'van_bed', x: 0, z: -2.09, rot: 0, mattress: 'foam_van',
+      finish: { frame: { mat: 'cab_honey_oak' }, bedding: { mat: 'uph_plaid' } },
+    },
+    { item: 'van_galley', x: 0.665, z: -0.15, rot: 3, finish: factoryCabinet },
     { item: 'cooler_fridge', x: 0.715, z: -1.0, rot: 3 },
     { item: 'cassette_toilet', x: -0.7, z: -1.12, rot: 1 },
-    { item: 'cab_base', x: -0.74, z: -0.61, rot: 1,config:{w:.6,h:.9,d:.4},finish:factoryCabinet },
-    { item: 'cab_upper', x:.79,z:-.15,rot:3,y:1.45,config:{w:1.1,h:.35,d:.3},finish:factoryCabinet,since:2 },
-    { item: 'light_dome',x:0,z:-1.94,rot:0,since:2 },
-    { item: 'light_dome',x:0,z:-.54,rot:0,since:2 },
+    {
+      item: 'cab_base', x: -0.74, z: -0.61, rot: 1,
+      config: { w: 0.6, h: 0.9, d: 0.4 }, finish: factoryCabinet,
+    },
+    {
+      item: 'cab_upper', x: 0.79, z: -0.15, rot: 3, y: 1.45,
+      config: { w: 1.1, h: 0.35, d: 0.3 }, finish: factoryCabinet, since: 2,
+    },
+    { item: 'light_dome', x: 0, z: -1.94, rot: 0, since: 2 },
+    { item: 'light_dome', x: 0, z: -0.54, rot: 0, since: 2 },
     { item: 'agm_battery', slot: 'battery' },
   ],
   paint: { body: '#efe3c8', accent: '#3f8f8a', stripe: '#d9773c', trim: '#5b5148' },
@@ -232,8 +256,11 @@ const CLASS_C: VehicleDef = {
   startCondition: { engine: 0.64, steering: 0.7, brakes: 0.66, body: 0.75, appliances: 0.62 },
   interior: {
     surfaces: surfaces(false),
-    gas: [{x0:-1.14,x1:-.4,z0:-1.25,z1:.5},{x0:.4,x1:1.14,z0:-1.7,z1:-.9}],
-    openings: [{name:'entry door',w:.68,h:1.85}],
+    gas: [
+      { x0: -1.14, x1: -0.4, z0: -1.25, z1: 0.5 },
+      { x0: 0.4, x1: 1.14, z0: -1.7, z1: -0.9 },
+    ],
+    openings: [{ name: 'entry door', w: 0.68, h: 1.85 }],
     floorY: 0.85,
     ceilingY: 2.85,
     cabFloorY: 0.6,
@@ -256,26 +283,46 @@ const CLASS_C: VehicleDef = {
     passengerSeat: { x: -0.55, z: 2.0 },
     cabover: { quality: 0.68 },
     windows: [
-      { id:'L1',side: 'left', a0: -3.2, a1: -2.45, y0: 1.65, y1: 2.25,factory:factoryCurtain(false) },
-      { id:'L2',side: 'left', a0: -0.85, a1: 0.65, y0: 1.55, y1: 2.3,factory:factoryCurtain(false) },
-      { id:'R1',side: 'right', a0: -1.05, a1: -0.25, y0: 1.75, y1: 2.3,factory:factoryCurtain(false) },
-      { id:'D1',door:true,side: 'right', a0: 0.68, a1: 1.12, y0: 1.75, y1: 2.25 },
-      { id:'B1',side: 'rear', a0: -0.6, a1: 0.6, y0: 1.7, y1: 2.3,factory:factoryCurtain(false) },
+      { id: 'L1', side: 'left', a0: -3.2, a1: -2.45, y0: 1.65, y1: 2.25, factory: factoryCurtain(false) },
+      { id: 'L2', side: 'left', a0: -0.85, a1: 0.65, y0: 1.55, y1: 2.3, factory: factoryCurtain(false) },
+      { id: 'R1', side: 'right', a0: -1.05, a1: -0.25, y0: 1.75, y1: 2.3, factory: factoryCurtain(false) },
+      { id: 'D1', door: true, side: 'right', a0: 0.68, a1: 1.12, y0: 1.75, y1: 2.25 },
+      { id: 'B1', side: 'rear', a0: -0.6, a1: 0.6, y0: 1.7, y1: 2.3, factory: factoryCurtain(false) },
     ],
   },
   defaults: [
-    { item: 'double_bed', x: 0, z: -2.94, rot: 0, mattress: 'foam_double',finish:{frame:{mat:'cab_honey_oak'},bedding:{mat:'uph_factory_tweed'}} },
+    {
+      item: 'double_bed', x: 0, z: -2.94, rot: 0, mattress: 'foam_double',
+      finish: { frame: { mat: 'cab_honey_oak' }, bedding: { mat: 'uph_factory_tweed' } },
+    },
     { item: 'wet_bath', x: -0.73, z: -1.79, rot: 1 },
-    { item: 'cab_wardrobe', x: 0.84, z: -1.94, rot: 3,config:{w:.6,h:1.9,d:.6,style:'louver'},finish:factoryCabinet },
-    { item: 'threeway_fridge', x: 0.83, z: -1.3, rot: 3,finish:{body:{mat:'app_almond'}} },
-    { item: 'dinette', x: 0.64, z: -0.05, rot: 3,finish:{cushions:{mat:'uph_factory_tweed'},frame:{mat:'cab_honey_oak'},table:{mat:'counter_factory'}} },
-    { item: 'propane_galley', x: -0.84, z: -0.45, rot: 1,finish:factoryCabinet },
-    { item:'cab_upper',x:-.975,z:-.45,rot:1,y:1.45,config:{w:1.6,h:.5,d:.33},finish:factoryCabinet,since:2 },
-    { item:'cab_upper',x:.975,z:-.05,rot:3,y:1.47,config:{w:1.4,h:.48,d:.33},finish:factoryCabinet,since:2 },
-    { item:'cab_upper',x:0,z:-3.475,rot:0,y:1.5,config:{w:2.2,h:.45,d:.33},finish:factoryCabinet,since:2 },
-    { item:'light_dome',x:0,z:-2.84,rot:0,since:2 },
-    { item:'light_dome',x:0,z:-1.44,rot:0,since:2 },
-    { item:'light_dome',x:0,z:-.04,rot:0,since:2 },
+    {
+      item: 'cab_wardrobe', x: 0.84, z: -1.94, rot: 3,
+      config: { w: 0.6, h: 1.9, d: 0.6, style: 'louver' }, finish: factoryCabinet,
+    },
+    { item: 'threeway_fridge', x: 0.83, z: -1.3, rot: 3, finish: { body: { mat: 'app_almond' } } },
+    {
+      item: 'dinette', x: 0.64, z: -0.05, rot: 3,
+      finish: {
+        cushions: { mat: 'uph_factory_tweed' }, frame: { mat: 'cab_honey_oak' }, table: { mat: 'counter_factory' },
+      },
+    },
+    { item: 'propane_galley', x: -0.84, z: -0.45, rot: 1, finish: factoryCabinet },
+    {
+      item: 'cab_upper', x: -0.975, z: -0.45, rot: 1, y: 1.45,
+      config: { w: 1.6, h: 0.5, d: 0.33 }, finish: factoryCabinet, since: 2,
+    },
+    {
+      item: 'cab_upper', x: 0.975, z: -0.05, rot: 3, y: 1.47,
+      config: { w: 1.4, h: 0.48, d: 0.33 }, finish: factoryCabinet, since: 2,
+    },
+    {
+      item: 'cab_upper', x: 0, z: -3.475, rot: 0, y: 1.5,
+      config: { w: 2.2, h: 0.45, d: 0.33 }, finish: factoryCabinet, since: 2,
+    },
+    { item: 'light_dome', x: 0, z: -2.84, rot: 0, since: 2 },
+    { item: 'light_dome', x: 0, z: -1.44, rot: 0, since: 2 },
+    { item: 'light_dome', x: 0, z: -0.04, rot: 0, since: 2 },
     { item: 'agm_battery', slot: 'battery' },
     { item: 'agm_battery', slot: 'battery' },
     { item: 'awning', slot: 'awning' },
