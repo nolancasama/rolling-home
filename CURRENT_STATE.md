@@ -8,8 +8,10 @@ Playable vertical slice in active development. Live build: https://nolancasama.g
 (GitHub Pages, deployed by `.github/workflows/pages.yml` on every push to `main`; the workflow runs the unit
 tests before building). Repo: https://github.com/nolancasama/rolling-home (public).
 
-**In progress on branch `design-mode` (not merged to `main`, so not live):** Design Mode, a Sims-style
-renovation editor for RV interiors, built from the "Advanced Vehicle Customization & Interior Design" plan.
+**Design Mode is live but unfinished.** It is a Sims-style renovation editor for RV interiors, built from the
+"Advanced Vehicle Customization & Interior Design" plan. S1–S3, S5 and part of S6 were merged into `main` and
+deployed on 2026-10-25. Work continues on branch `design-mode`, which gets merged into `main` again as slices
+land.
 What was accepted, changed or rejected from that plan is in `DESIGN_DECISIONS.md` (2026-10-25). The full frozen
 contract is `.ai/design-mode-spec.md`. `.ai/` is gitignored, so it exists only on this machine.
 
@@ -30,7 +32,7 @@ Chromebooks (that constraint is for the ESL classroom games only). High is the d
   (water, battery, solar, shore power, propane fridge, food spoilage; hunger/energy/hygiene/mood; delivery and
   odd jobs; reservations and hookups; fuel/dump/propane/mechanics/shops; GPS routing with route compression).
 
-**Design Mode (branch `design-mode`)**
+**Design Mode**
 - S1, data and simulation: materials catalog, parametric families (cabinets, sofas, rugs, light strips), finishes
   on surfaces and item slots, window treatments, fixture lighting with power draw, appeal, Life/Creative game
   types (`gameType`, `creativeRelaxed`), save migration.
@@ -61,10 +63,9 @@ Chromebooks (that constraint is for the ESL classroom games only). High is the d
 **Verification**
 - `npm test`: 126 Vitest tests (simulation, Design Mode data/drafts/blueprints/pricing, a catalog snapshot,
   terrain, physics). CI runs them before every deploy.
-- `npm run acceptance`: Playwright harness (`acceptance/run.mjs`), 12 sections / 39 checks at 1366×768. The last
-  full run was 39/39 after the S3 merge. After S5, the furnishing, interior, saveload and living sections passed;
-  the furnishing section now drives Design Mode and confirms its draft. Use `--only <section>` while iterating.
-- S6 has not had a full acceptance run yet.
+- `npm run acceptance`: Playwright harness (`acceptance/run.mjs`), 12 sections / 39 checks at 1366×768. The
+  latest full run passed 39/39 (261 s) on 2026-10-25, just before the deploy. The furnishing section drives
+  Design Mode and confirms its draft. Use `--only <section>` while iterating.
 
 ## Current Work
 
@@ -109,7 +110,8 @@ reviewed yet.
    Run it in a worktree and review it visually.
 3. **S7, acceptance.** Add harness sections for the plan's 40-step scenario, edge cases and performance,
    including real mouse clicks in Design Mode. Then run the full `npm run acceptance`.
-4. Merge `design-mode` into `main` and push (that deploys Pages). Update this file.
+4. As each of S4, the rest of S6 and S7 lands, run the full acceptance suite, merge `design-mode` into `main`
+   and push (that deploys Pages). Update this file.
 5. Clean up the merged worktrees `../rolling-home-s3` (branch `design-mode-s3`) and `../rolling-home-data`
    (branch `design-mode-data`) with `git worktree remove` and delete their branches.
 6. Later, from before Design Mode: High-preset visual upgrades (street-lamp and campfire lights, softer
