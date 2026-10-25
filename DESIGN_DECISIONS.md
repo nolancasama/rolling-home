@@ -247,3 +247,22 @@ work orders, the durable decisions are here.
   nothing reaches the real game until the review is confirmed.
 - Default view: from behind the door side, about 0.7 × the vehicle length away; time-of-day preview drives the
   sky and the auto-lights rule only (never the game clock).
+
+### Design Mode editor (S6, in progress)
+- **Tabs:** the left panel holds Build (catalog), Surfaces, Windows, Lights and Blueprints; the right inspector
+  edits whatever is selected (a piece, a surface or a window). The Windows tab raises the walls, because the
+  cutaway hides coverings, and restores the previous wall level on leaving.
+- **Surfaces** are picked by clicking in the view (only the visible part of a cut wall counts) or from the list.
+  "Use on all floors/walls/ceilings" copies a finish to every zone of that kind; "Factory finish" restores one.
+- **Window fabric pickers list only materials valid on windows** (linen, canvas and ticking upholstery qualify;
+  velvet and leather do not), because the renovation validator rejects the rest. *Rejected:* offering every
+  upholstery fabric and failing on apply.
+- **Relaxed rules (Creative only) is a game setting**, toggled from the editor toolbar: it applies at once to the
+  real game and the draft and survives Discard. *Rejected:* keeping it in the draft, where Discard would silently
+  revert it.
+- **The blueprint library belongs to the machine, not the save** (localStorage behind a small adapter, so a
+  desktop build can keep files). Blueprints fit only the same vehicle model; loading one is an ordinary undoable
+  draft edit that the review prices.
+- **Bug fixed:** the editor's root inherited the generic `#ui .screen` rule, so it caught every mouse click and
+  dimmed the 3D view by 38%. The root is now click-through and undimmed. The acceptance harness drives Design
+  Mode only through `window.__rh.design`, which is why nothing caught this; S7 must include real mouse clicks.

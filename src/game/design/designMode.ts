@@ -19,6 +19,7 @@ import { clearances, edgeMagnet, FINE, GRID, nearestWall, onWall, snap, type Wal
 
 export type WallsLevel = 'up' | 'cut' | 'down';
 export type Tool = 'select' | 'measure';
+export type DesignTab = 'build' | 'surfaces' | 'windows' | 'lighting' | 'blueprints';
 
 export interface Candidate {
   x: number;
@@ -91,6 +92,12 @@ export class DesignMode implements Mode {
   hovered: string | null = null;
   session: Session | null = null;
   tool: Tool = 'select';
+  tab: DesignTab = 'build';
+  /** Selected vehicle surface (Surfaces tab) or window (Windows tab). */
+  surface: string | null = null;
+  windowId: string | null = null;
+  /** Item material slot being edited in the inspector. */
+  slot: string | null = null;
   walls: WallsLevel = 'cut';
   showGrid = true;
   pro = false;
@@ -147,6 +154,8 @@ export class DesignMode implements Mode {
     this.selected = [];
     this.session = null;
     this.tool = 'select';
+    this.tab = 'build';
+    this.surface = this.windowId = this.slot = null;
     this.walking = false;
     this.previewIndex = 0;
     g.previewMinutes = null;
@@ -371,11 +380,93 @@ export class DesignMode implements Mode {
     this.g.ui.invalidate();
   }
 
+  /** Creative games: hookup, gas and door-size problems only warn. A game setting, so it applies at once. */
+  setRelaxed(on: boolean) {
+    const real = this.g.sim!.s;
+    if (real.gameType !== 'creative') return;
+    real.creativeRelaxed = on;
+    this.draft!.s.creativeRelaxed = on;
+    this.draft!.base.creativeRelaxed = on;
+    if (this.session) this.refreshSession();
+    this.changed();
+  }
+
   cyclePreview(index = (this.previewIndex + 1) % PREVIEW_HOURS.length) {
     this.previewIndex = index;
     const h = PREVIEW_HOURS[index].hour;
     this.g.previewMinutes = h == null ? null : Math.floor(this.g.sim!.s.time.minutes / 1440) * 1440 + h * 60;
     this.g.ui.invalidate();
+  }
+
+  /** Switch the left panel; windows are easiest to work on with the walls up. */
+  setTab(tab: DesignTab) {
+    if (tab === this.tab) return;
+    this.endSession();
+    if (this.tool !== 'select') this.setTool('select');
+    const leavingWindows = this.tab === 'windows';
+    this.tab = tab;
+    this.surface = this.windowId = this.slot = null;
+    if (tab === 'windows') {
+      this.wallsBeforeWindows = this.walls;
+      this.setWalls('up');
+    } else if (leavingWindows && this.wallsBeforeWindows) this.setWalls(this.wallsBeforeWindows);
+    if (tab !== 'build' && tab !== 'lighting') this.selected = [];
+    this.updateHighlight();
+    this.g.ui.invalidate();
+  }
+
+  private wallsBeforeWindows: WallsLevel | null = null;
+
+  selectSurface(id: string | null) {
+    this.surface = id;
+    this.windowId = null;
+    this.updateHighlight();
+    this.g.ui.invalidate();
+  }
+
+  selectWindow(id: string | null) {
+    this.windowId = id;
+    this.surface = null;
+    this.updateHighlight();
+    this.g.ui.invalidate();
+  }
+
+  private updateHighlight() {
+    const inr = this.vd.interior, l = inr.living;
+    const y = inr.floorY;
+    const rects: Rect[] = [];
+    const lines: [THREE.Vector3, THREE.Vector3][] = [];
+    const along = (side: string, a0: number, a1: number) => {
+      if (side === 'left') lines.push([new THREE.Vector3(l.x1 - 0.03, y, a0), new THREE.Vector3(l.x1 - 0.03, y, a1)]);
+      else if (side === 'right') lines.push([new THREE.Vector3(l.x0 + 0.03, y, a0), new THREE.Vector3(l.x0 + 0.03, y, a1)]);
+      else if (side === 'rear') lines.push([new THREE.Vector3(a0, y, l.z0 + 0.03), new THREE.Vector3(a1, y, l.z0 + 0.03)]);
+      else lines.push([new THREE.Vector3(a0, y, l.z1 - 0.03), new THREE.Vector3(a1, y, l.z1 - 0.03)]);
+    };
+    const s = this.surface ? inr.surfaces.find((x) => x.id === this.surface) : undefined;
+    if (s?.rect) rects.push(s.rect);
+    if (s?.wall) along(s.wall.side, s.wall.a0, s.wall.a1);
+    const w = this.windowId ? inr.windows.find((x) => x.id === this.windowId) : undefined;
+    if (w) along(w.side, w.a0, w.a1);
+    this.overlay?.setHighlight(rects, lines);
+  }
+
+  /** First visible surface or window under the pointer, ignoring wall parts hidden by the cutaway. */
+  private pickShell(key: 'surface' | 'window'): string | null {
+    const vv = this.g.vv!, inr = this.vd.interior;
+    const cut = this.walls === 'cut' ? inr.floorY + 1.0 : this.walls === 'down' ? inr.floorY + 0.12 : Infinity;
+    const visible = (o: THREE.Object3D | null) => {
+      for (let p = o; p; p = p.parent) if (!p.visible) return false;
+      return true;
+    };
+    for (const hit of this.ray.intersectObject(vv.interior.group, true)) {
+      if (!visible(hit.object)) continue;
+      if (vv.body.worldToLocal(hit.point.clone()).y > cut + 0.01) continue;
+      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+        const v = o.userData[key];
+        if (typeof v === 'string') return v;
+      }
+    }
+    return null;
   }
 
   setTool(tool: Tool) {
@@ -417,6 +508,7 @@ export class DesignMode implements Mode {
     if (this.walking) return this.toggleWalk();
     if (this.session) return this.endSession();
     if (this.tool !== 'select') return this.setTool('select');
+    if (this.surface || this.windowId) return this.selectSurface(null);
     if (this.selected.length) {
       this.selected = [];
       this.g.ui.invalidate();
@@ -849,6 +941,15 @@ export class DesignMode implements Mode {
 
   private updateSelect() {
     const inp = this.g.input;
+    if (this.tab === 'surfaces' || this.tab === 'windows') {
+      this.hovered = null;
+      if (inp.clicked.has(0)) {
+        const hit = this.pickShell(this.tab === 'windows' ? 'window' : 'surface');
+        if (this.tab === 'windows') this.selectWindow(hit);
+        else this.selectSurface(hit);
+      }
+      return;
+    }
     const hover = this.pickItem();
     if (hover !== this.hovered) this.hovered = hover;
     if (inp.clicked.has(0)) this.press = { uid: hover, x: inp.mouseX, y: inp.mouseY, shift: inp.isDown('Shift') };

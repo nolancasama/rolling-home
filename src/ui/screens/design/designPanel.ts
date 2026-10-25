@@ -6,14 +6,24 @@ import { normalizeConfig } from '../../../sim/families';
 import * as reno from '../../../sim/renovation';
 import { defOf, mattressOn } from '../../../sim/vehicle';
 import type { Game } from '../../../game/game';
-import { CATALOG_CATEGORIES, formatLength, PREVIEW_HOURS, type DesignMode } from '../../../game/design/designMode';
+import { CATALOG_CATEGORIES, formatLength, PREVIEW_HOURS, type DesignMode, type DesignTab } from '../../../game/design/designMode';
 import { append, btn, clear, h, type Child } from '../../dom';
 import type { Screen } from '../../ui';
 import { kg, liters, thumbEl } from '../common';
+import { materialPicker } from './materialPicker';
+import { blueprintsTab, lightingTab, surfaceEditor, surfacesTab, tabRevision, windowEditor, windowsTab } from './tabs';
 
 // Design Mode panels (non-modal: the 3D view stays interactive). Each region
 // re-renders only when what it shows changed, so placing stays smooth and the
 // search field keeps its focus.
+
+const TABS: { id: DesignTab; label: string; title: string }[] = [
+  { id: 'build', label: 'Build', title: 'Furniture, cabinets, appliances and systems' },
+  { id: 'surfaces', label: 'Surfaces', title: 'Floors, walls, ceilings and trim' },
+  { id: 'windows', label: 'Windows', title: 'Curtains, shades and blinds' },
+  { id: 'lighting', label: 'Lights', title: 'Fixture settings and the time-of-day preview' },
+  { id: 'blueprints', label: 'Blueprints', title: 'Save, load and share whole interiors' },
+];
 
 export function designPanel(g: Game) {
   const dm = g.design;
@@ -26,9 +36,12 @@ export function designPanel(g: Game) {
   });
   const chips = h('div', { class: 'design-chips' });
   const list = h('div', { class: 'design-catalog scroll', testid: 'design-catalog' });
+  const tabs = h('div', { class: 'design-tabs', testid: 'design-tabs' });
+  const buildBody = h('div', { class: 'design-left-body' }, search, chips, list);
+  const tabBody = h('div', { class: 'design-left-body design-tab-body', testid: 'design-tab-body' });
   const left = h('div', { class: 'design-left' },
-    h('div', { class: 'card-head' }, h('h2', null, 'Design'), h('span', { class: 'small muted' }, 'Catalog')),
-    h('div', { class: 'design-left-body' }, search, chips, list),
+    h('div', { class: 'card-head' }, h('h2', null, 'Design')),
+    tabs, buildBody, tabBody,
   );
   const inspector = h('div', { class: 'design-inspector', testid: 'design-inspector' });
   const summaryEl = h('div', { class: 'design-summary', testid: 'design-summary' });
@@ -50,10 +63,11 @@ export function designPanel(g: Game) {
 
   const renderTop = () => {
     const sum = dm.summary();
-    if (!changed('top', [dm.version, dm.walls, dm.tool, dm.showGrid, dm.previewIndex, dm.walking, dm.draft?.undo.length, dm.draft?.redo.length, sum.total].join('|'))) return;
+    const creative = g.sim!.s.gameType === 'creative';
+    if (!changed('top', [dm.version, dm.walls, dm.tool, dm.showGrid, dm.previewIndex, dm.walking, dm.draft?.undo.length, dm.draft?.redo.length, sum.total, creative && g.sim!.s.creativeRelaxed].join('|'))) return;
     clear(top);
     const tool = (label: string, on: boolean, fn: () => void, testid: string, title: string) => btn(label, fn, `small ${on ? 'teal' : 'ghost'}`, testid, false, title);
-    top.append(
+    append(top, [
       h('div', { class: 'design-group' },
         tool('Select', dm.tool === 'select', () => dm.setTool('select'), 'd-tool-select', 'Select and move pieces'),
         tool('Measure', dm.tool === 'measure', () => dm.setTool(dm.tool === 'measure' ? 'select' : 'measure'), 'd-tool-measure', 'Measure distances and free wall space (M)'),
@@ -70,6 +84,9 @@ export function designPanel(g: Game) {
         tool('Walk', dm.walking, () => dm.toggleWalk(), 'd-walk', 'Walk through the design (V)'),
         tool(`Light: ${PREVIEW_HOURS[dm.previewIndex].label}`, dm.previewIndex !== 0, () => dm.cyclePreview(), 'd-preview', 'Preview the time of day (N)'),
       ),
+      creative ? h('div', { class: 'design-group' },
+        tool('Relaxed rules', !!g.sim!.s.creativeRelaxed, () => dm.setRelaxed(!g.sim!.s.creativeRelaxed), 'd-relaxed', 'Creative: hookups, gas and the door size only warn instead of blocking'),
+      ) : null,
       h('div', { class: 'design-group' },
         btn('↶ Undo', () => dm.undo(), 'small ghost', 'd-undo', !dm.draft?.undo.length, 'Undo (Ctrl+Z)'),
         btn('↷ Redo', () => dm.redo(), 'small ghost', 'd-redo', !dm.draft?.redo.length, 'Redo (Ctrl+Y)'),
@@ -78,7 +95,15 @@ export function designPanel(g: Game) {
         btn('Discard', () => g.screens.confirm('Discard all changes?', 'Nothing will be bought or changed.', () => dm.discard(), 'Discard'), 'small ghost', 'd-discard'),
         btn(sum.changed ? `Review & confirm · ${money(sum.total)}` : 'Done', () => dm.done(), 'small', 'd-done'),
       ),
-    );
+    ]);
+  };
+
+  const renderTabs = () => {
+    if (!changed('tabs', dm.tab)) return;
+    clear(tabs);
+    for (const t of TABS) tabs.append(h('button', { class: `design-tab ${dm.tab === t.id ? 'active' : ''}`, testid: `d-tab-${t.id}`, title: t.title, onClick: () => dm.setTab(t.id) }, t.label));
+    buildBody.style.display = dm.tab === 'build' ? '' : 'none';
+    tabBody.style.display = dm.tab === 'build' ? 'none' : '';
   };
 
   const renderChips = () => {
@@ -90,6 +115,7 @@ export function designPanel(g: Game) {
   };
 
   const renderCatalog = (force = false) => {
+    if (dm.tab !== 'build') return;
     if (!changed('catalog', [dm.version, dm.category, dm.query].join('|')) && !force) return;
     clear(list);
     const q = dm.query.trim().toLowerCase();
@@ -123,12 +149,30 @@ export function designPanel(g: Game) {
     }
   };
 
+  const renderTabBody = () => {
+    if (dm.tab === 'build') return;
+    if (!changed('tabBody', [dm.tab, dm.version, dm.surface, dm.windowId, dm.selected.join(','), dm.previewIndex, tabRevision()].join('|'))) return;
+    const scroll = tabBody.scrollTop;
+    clear(tabBody);
+    const body = dm.tab === 'surfaces' ? surfacesTab(g, dm) : dm.tab === 'windows' ? windowsTab(g, dm) : dm.tab === 'lighting' ? lightingTab(g, dm) : blueprintsTab(g, dm);
+    append(tabBody, [body]);
+    tabBody.scrollTop = scroll;
+  };
+
   const renderInspector = () => {
     const sess = dm.session;
-    const key = [dm.version, dm.selected.join(','), sess ? `${sess.kind}:${JSON.stringify(sess.cand)}:${sess.issues.map((i) => i.text).join('/')}:${sess.kind === 'new' ? JSON.stringify(sess.config) : ''}` : '', dm.tool, dm.measure.text, dm.measure.band].join('|');
+    const key = [dm.tab, dm.surface, dm.windowId, dm.slot, dm.version, dm.selected.join(','), sess ? `${sess.kind}:${JSON.stringify(sess.cand)}:${sess.issues.map((i) => i.text).join('/')}:${sess.kind === 'new' ? JSON.stringify(sess.config) : ''}` : '', dm.tool, dm.measure.text, dm.measure.band].join('|');
     if (!changed('inspector', key)) return;
+    const body = inspector.parentElement!;
+    const scroll = body.scrollTop;
     clear(inspector);
-    append(inspector, [inspectorBody(g, dm)]);
+    const content = dm.tab === 'surfaces' && dm.surface ? surfaceEditor(g, dm, dm.surface)
+      : dm.tab === 'windows' && dm.windowId ? windowEditor(g, dm, dm.windowId)
+        : dm.tab === 'surfaces' ? h('p', { class: 'small muted' }, 'Click a floor, wall, ceiling or trim run to change its finish. With the walls cut away, click the lower part of a wall.')
+          : dm.tab === 'windows' ? h('p', { class: 'small muted' }, 'Click a window (or pick one on the left) to choose its covering, fabric and hardware.')
+            : inspectorBody(g, dm);
+    append(inspector, [content]);
+    body.scrollTop = scroll;
   };
 
   const renderSummary = () => {
@@ -141,7 +185,9 @@ export function designPanel(g: Game) {
     const text = dm.walking ? 'WASD walk · mouse look · V or Esc: back to the editor'
       : dm.session ? 'Move the mouse to position · click to place · R rotate · arrows nudge · Alt: no snapping · Esc cancel'
         : dm.tool === 'measure' ? 'Click two points to measure · hover a wall for free space · B: floor / upper band · Esc: done'
-          : 'Click to select (Shift adds) · drag to move · Del remove · Ctrl+D duplicate · Ctrl+Z undo · right-drag orbit · middle-drag pan · wheel zoom';
+          : dm.tab === 'surfaces' ? 'Click a surface to select it · right-drag orbit · middle-drag pan · wheel zoom'
+            : dm.tab === 'windows' ? 'Click a window to select it · right-drag orbit · wheel zoom'
+              : 'Click to select (Shift adds) · drag to move · Del remove · Ctrl+D duplicate · Ctrl+Z undo · right-drag orbit · middle-drag pan · wheel zoom';
     if (!changed('hint', text)) return;
     hint.textContent = text;
   };
@@ -150,8 +196,10 @@ export function designPanel(g: Game) {
     id: 'design', el, pauses: false, blocks: false, escClose: false,
     render: () => {
       renderTop();
+      renderTabs();
       renderChips();
       renderCatalog();
+      renderTabBody();
       renderInspector();
       renderSummary();
       renderHint();
@@ -252,7 +300,7 @@ function inspectorBody(g: Game, dm: DesignMode): Child {
   if (!it) {
     const systems = Object.values(s.items).filter((i) => i.where.kind === 'slot' && i.where.vehicle === dm.vid);
     return h('div', null,
-      h('p', { class: 'small muted' }, 'Pick something from the catalog to place it, or click a piece in your RV to select, move, resize or remove it.'),
+      h('p', { class: 'small muted' }, 'Pick something from the catalog to place it, or click a piece in your RV to select, move, resize, recolor or remove it.'),
       h('h3', null, 'Installed systems'),
       systems.length ? h('div', { class: 'list' }, systems.map((sys) => h('div', { class: 'item design-row' },
         h('div', { class: 'meta' }, h('div', { class: 'name' }, defOf(sys).name), h('div', { class: 'desc' }, `${(sys.where as { slot: string }).slot} · ${kg(defOf(sys).mass)}`)),
@@ -281,7 +329,14 @@ function inspectorBody(g: Game, dm: DesignMode): Child {
         () => dm.apply(reno_mattress(dm, it.uid, e.owned[0]?.uid ?? e.def.id)), 'small ghost', `d-mattress-${e.def.id}`)))) : null,
     d.slots?.length ? h('div', { class: 'design-config' }, h('h3', null, 'Materials'), d.slots.map((slot) => {
       const f = it.finish?.[slot.id] ?? slot.default;
-      return h('div', { class: 'design-slot small' }, h('span', { class: 'swatch', style: `background:${f.color ?? materialDef(f.mat).color}` }), h('span', null, `${slot.label}: ${materialDef(f.mat).name}`));
+      const open = dm.slot === slot.id;
+      return h('div', { class: 'design-slot-wrap' },
+        h('button', { class: `design-slot ${open ? 'active' : ''}`, testid: `d-slot-${slot.id}`, onClick: () => { dm.slot = open ? null : slot.id; g.ui.invalidate(); } },
+          h('span', { class: 'mat-dot', style: `background:${f.color ?? materialDef(f.mat).color}` }),
+          h('span', { class: 'design-slot-name' }, h('b', null, slot.label), ` ${materialDef(f.mat).name}`),
+          h('span', { class: 'small muted' }, open ? 'Close' : 'Change')),
+        open ? materialPicker({ kinds: slot.surfaces, value: f, testid: `d-slot-picker-${slot.id}`, apply: (nf) => dm.apply(reno.setFinish(dm.draft!, { uid: it.uid, slot: slot.id }, nf)) }) : null,
+      );
     })) : null,
     issueList(issues, 'd-item-issues'),
     h('div', { class: 'row wrap', style: 'margin-top:8px' },

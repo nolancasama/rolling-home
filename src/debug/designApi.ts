@@ -1,6 +1,9 @@
 import type { Finish, ItemConfig, SlotKind, WindowTreatment } from '../data/types';
 import type { Game } from '../game/game';
-import type { WallsLevel } from '../game/design/designMode';
+import { newBlueprintId } from '../game/blueprintStore';
+import type { DesignTab, WallsLevel } from '../game/design/designMode';
+import { blueprintStore, refreshTabs } from '../ui/screens/design/tabs';
+import { checkBlueprint, factoryBlueprint, makeBlueprint, parseBlueprint } from '../sim/blueprints';
 import type { Result } from '../sim/core';
 import { checkPlacement, freeWallSpan } from '../sim/furnish';
 import * as reno from '../sim/renovation';
@@ -98,5 +101,37 @@ export function designApi(game: Game) {
     previewHour: (index: number) => { dm().cyclePreview(index); return game.previewMinutes; },
     walk: (on: boolean) => { if (dm().walking !== on) dm().toggleWalk(); return dm().walking; },
     tool: (tool: 'select' | 'measure') => { dm().setTool(tool); return dm().tool; },
+    tab: (tab: DesignTab) => { dm().setTab(tab); return dm().tab; },
+    selectSurface: (id: string | null) => { dm().selectSurface(id); return dm().surface; },
+    selectWindow: (id: string | null) => { dm().selectWindow(id); return dm().windowId; },
+    /** Open an item material slot's picker in the inspector. */
+    editSlot: (slot: string | null) => { dm().slot = slot; game.ui.invalidate(); return dm().slot; },
+    relaxed: (on: boolean) => { dm().setRelaxed(on); return !!game.sim!.s.creativeRelaxed; },
+    blueprints: {
+      list: () => blueprintStore.list().map((b) => ({ id: b.id, name: b.name, vehicle: b.vehicle, items: b.stats.items, fits: checkBlueprint(b, game.phys!.def).ok })),
+      save: (name: string) => {
+        const bp = makeBlueprint(draft().s, draft().vid, { id: newBlueprintId(), name, createdAt: new Date().toISOString() });
+        const saved = blueprintStore.put(bp);
+        refreshTabs(game);
+        return saved ? bp.id : null;
+      },
+      load: (id: string) => {
+        const bp = blueprintStore.list().find((b) => b.id === id);
+        return bp ? edit(reno.applyBlueprint(draft(), bp)) : { ok: false, reason: 'No such blueprint.' };
+      },
+      factory: () => edit(reno.applyBlueprint(draft(), factoryBlueprint(game.phys!.def.id))),
+      remove: (id: string) => { const done = blueprintStore.remove(id); refreshTabs(game); return done; },
+      exportJson: (id: string) => {
+        const bp = blueprintStore.list().find((b) => b.id === id);
+        return bp ? JSON.stringify(bp) : null;
+      },
+      importJson: (json: string) => {
+        const r = parseBlueprint(json);
+        if (!r.ok) return { ok: false, reason: r.reason };
+        blueprintStore.put(r.blueprint);
+        refreshTabs(game);
+        return { ok: true, id: r.blueprint.id };
+      },
+    },
   };
 }

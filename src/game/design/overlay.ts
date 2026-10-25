@@ -29,6 +29,7 @@ export class DesignOverlay {
   private access: THREE.Mesh;
   private guides: THREE.LineSegments;
   private dims: THREE.LineSegments;
+  private highlight: THREE.LineSegments;
   private dimList: DimLine[] = [];
   private labels: HTMLElement[] = [];
   private y: number;
@@ -64,7 +65,8 @@ export class DesignOverlay {
     this.access.rotation.x = -Math.PI / 2;
     this.guides = top(new THREE.LineSegments(new THREE.BufferGeometry(), lineMat(0x2fd0c0)), 10) as THREE.LineSegments;
     this.dims = top(new THREE.LineSegments(new THREE.BufferGeometry(), lineMat(0x1f2a33)), 11) as THREE.LineSegments;
-    this.group.add(this.footprint, this.envelopes, this.access, this.guides, this.dims);
+    this.highlight = top(new THREE.LineSegments(new THREE.BufferGeometry(), lineMat(0x2fd0c0)), 12) as THREE.LineSegments;
+    this.group.add(this.footprint, this.envelopes, this.access, this.guides, this.dims, this.highlight);
     this.clearCandidate();
   }
 
@@ -123,6 +125,20 @@ export class DesignOverlay {
     this.guides.geometry.dispose();
     this.guides.geometry = new THREE.BufferGeometry();
     this.guides.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  }
+
+  /** Outline the selected surface (zone rects) or wall run / window (plan lines). */
+  setHighlight(rects: Rect[], lines: [THREE.Vector3, THREE.Vector3][]) {
+    const pts: number[] = [];
+    const y = this.y + 0.006;
+    for (const r of rects) {
+      const loop = rectLoop(r, y);
+      for (let i = 0; i < 4; i++) pts.push(...loop[i].toArray(), ...loop[(i + 1) % 4].toArray());
+    }
+    for (const [a, b] of lines) pts.push(a.x, y, a.z, b.x, y, b.z);
+    this.highlight.geometry.dispose();
+    this.highlight.geometry = new THREE.BufferGeometry();
+    this.highlight.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   }
 
   /** Dimension lines in local meters; labels are placed each frame by updateLabels. */

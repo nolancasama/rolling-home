@@ -8,86 +8,116 @@ Playable vertical slice in active development. Live build: https://nolancasama.g
 (GitHub Pages, deployed by `.github/workflows/pages.yml` on every push to `main`; the workflow runs the unit
 tests before building). Repo: https://github.com/nolancasama/rolling-home (public).
 
+**In progress on branch `design-mode` (not merged to `main`, so not live):** Design Mode, a Sims-style
+renovation editor for RV interiors, built from the "Advanced Vehicle Customization & Interior Design" plan.
+What was accepted, changed or rejected from that plan is in `DESIGN_DECISIONS.md` (2026-10-25). The full frozen
+contract is `.ai/design-mode-spec.md`. `.ai/` is gitignored, so it exists only on this machine.
+
 **Target:** desktop browsers with a decent GPU; visual quality over low-end performance. Not optimized for
 Chromebooks (that constraint is for the ESL classroom games only). High is the default graphics preset.
 
 ## What Exists
 
 **Simulation (pure TS, `src/sim`, `src/data`, `src/world`)**
-- Game state as one JSON object; save/load round-trips exactly (3 slots + autosave in localStorage).
+- Game state as one JSON object; save/load round-trips exactly (3 slots + autosave in localStorage). Saves are
+  version 2; v1 saves migrate (`src/sim/save.ts`).
 - Two vehicles (1997 camper van, 2004 Class C) with GVWR, front/rear GAWR, tank positions, compartments,
-  system slots, interior floor plans and default equipment. Van starts at 2,799 kg (601 kg payload); Class C at
-  4,644 kg (556 kg payload).
+  system slots, interior floor plans, named surfaces/windows/openings and factory finishes. The van starts at
+  2,799 kg (601 kg payload); the Class C at 4,644 kg (556 kg payload).
 - Weight: every item instance has a position; axle loads from moments about the front axle; compartment
-  volume / weight / opening-size limits; loose storage needs cargo straps; overload > 15% refuses driving.
-- Utilities: fresh/gray/black water liter-for-liter, battery Wh integration, solar by time of day and shade,
-  shore power, alternator, generator, 3-way fridge on propane, butane canisters, food spoilage.
-- Needs (hunger, energy, hygiene) + mood with factors; sleep quality from bed/mattress and stay type.
-- Jobs: daily boards (deterministic per seed/day), fixed onboarding delivery, cargo loading validation,
-  delivery pay with lateness/damage, deadline failure, odd jobs (visit/carry), remote work (signal, power).
-- Camping: reservations, occupancy (NPCs + random campers), check-out charging, hookups, leveling, awning,
-  outdoor items, pre-trip check + pack-up.
-- Services: fuel, water fill, dump (procedure with mistakes), propane, car wash, showers, diner, canoe, fishing,
-  campfire, storage locker. Mechanics with quotes, DIY parts. Shops (buy with storage + weight preview,
-  sell, used stock, dealership trade-in). NPC travelers with weekly schedules, tips, a sale and jobs.
-  Discoveries, onboarding objectives, 30-day goal, weekly bills, time integrator.
-- Terrain/road model: 4 m height grid, flattened towns/pads, lake basin, canyon, mesas, road profiles with
-  grade limits, GPS routing (respects narrow tracks), route compression (fictional km and game time).
+  volume / weight / opening-size limits; finishes add weight; overload > 15% refuses driving.
+- Utilities, needs, jobs, camping, services, shops, NPCs, terrain and routing: unchanged from the vertical slice
+  (water, battery, solar, shore power, propane fridge, food spoilage; hunger/energy/hygiene/mood; delivery and
+  odd jobs; reservations and hookups; fuel/dump/propane/mechanics/shops; GPS routing with route compression).
+
+**Design Mode (branch `design-mode`)**
+- S1, data and simulation: materials catalog, parametric families (cabinets, sofas, rugs, light strips), finishes
+  on surfaces and item slots, window treatments, fixture lighting with power draw, appeal, Life/Creative game
+  types (`gameType`, `creativeRelaxed`), save migration.
+- S2, drafts: `src/sim/renovation.ts`. Every edit runs on a draft copy with undo/redo; a summary prices goods,
+  delivery, DIY or pro labor, sales of removed pieces, weight, storage and night power; commit is atomic, with a
+  stale check. Blueprints: `src/sim/blueprints.ts`.
+- S3, rendering: procedural PBR materials (`src/render/materials`), a surface-based interior shell, window
+  coverings, a pooled fixture-light system, bloom on High, eye adaptation. There is a material gallery at
+  `material-gallery.html` (`npm run gallery:shot`) and interior shots via `npm run shots:interior`.
+- S5, editor: `src/game/design/` (mode, camera, snapping, overlay) and `src/ui/screens/design/` (panel, review).
+  It has placement with live validation and explained issues, wall snapping, edge magnets, live dimensions,
+  measuring, resizing, fit to gap, walls up/cut/down, a top view, walking the design, a time-of-day preview, and a
+  review dialog with keep/sell/discard and DIY/Pro choices. It replaced the old furnish mode (`F` opens it; the
+  test API alias `setMode('furnish')` still works).
+- S6, partly done (this checkpoint): tabs for Surfaces (material picker with swatches, palette, custom color,
+  plank sizes, direction, scale, gloss), Windows (covering types with prices, fabrics, day/night layers, valance,
+  hardware, mount, length, open/half/closed preview), Lights (per-fixture mode, dimming, color temperature, RGB,
+  all-lights switches, time preview) and Blueprints (save, load, rename, duplicate, delete, export/import JSON,
+  restore the factory layout). Item material slots are editable in the inspector, and Creative games get a
+  Relaxed-rules toggle. Test hooks are in `src/debug/designApi.ts` (`window.__rh.design`).
 
 **Game client (`src/render`, `src/game`, `src/ui`, `src/audio`)**
-- Three.js world: chunked terrain with biome colors, lake shader, distant mountains, roads with markings,
-  pads, buildings with signs, instanced vegetation/rocks, town props, sky with day/night, traffic,
-  pedestrians, campers at occupied sites, NPC camps, markers.
-- Procedural van and Class C (exteriors with real window openings, interiors, wheels, doors, awning, solar,
-  rust/dirt; Class C cab a step below the coach with an open cab-over bunk), furniture models, character with
-  animation.
-- Modes: explore (3rd person), interior (1st person), drive (arcade physics with an engine torque plateau,
-  chase/cockpit), furnish (overhead cutaway editor with live validation and weight panel).
-- UI: main menu (Red Rock Flats backdrop), new game (appearance, vehicle, difficulty), HUD, phone (map/GPS +
-  destination list + assisted travel, jobs, finances, RV status, inventory, journal), shop, job board, dock +
-  cargo loading, campground, hookups, fuel/water/dump/propane, mechanic, procedures, eat/cook/sleep, NPC
-  dialog, pause, settings, save/load.
-- Procedural audio (engine, road, ambience, one-shots, generative music).
-- `window.__rh` test API (snapshot, teleport, act, autodrive/speedRun with real physics, furnishing helpers).
+- Three.js world, procedural van and Class C, furniture models (still the old boxy ones; see S4), character.
+- Modes: explore (third person), interior (first person), drive (arcade physics), design (above).
+- UI: menus, HUD, phone, shops, jobs, cargo, camping, services, eat/cook/sleep, dialogs, settings, save/load.
+- Procedural audio. `window.__rh` test API.
 
 **Verification**
-- `npm test`: 33 Vitest tests (terrain incl. road clearance for props, simulation, vehicle physics). Run in CI
-  before every deploy.
-- `npm run acceptance`: Playwright harness (`acceptance/run.mjs`, follows `~/.claude/workers/harness/PROTOCOL.md`)
-  driving the real game in Chromium at 1366×768. 12 sections / 39 checks covering the plan's 30-step loop
-  (startup → explore → interior → shopping → cargo → driving → delivery → camping → living → furnishing →
-  save/load → integration). Trusted: known-good full run PASS 39/39 (≈216 s); known-bad probe (injected
-  gray-water bug) → PRODUCT_FAILURE, exit 1. Manifest at `.tmp/acceptance/<full|section>/manifest.json`.
-- `npx vitest run --config vitest.tools.config.ts`: 30-day scripted-player economy report (manual, not CI).
-  Latest: Balanced ends ~$3.3–4.7k, Hard ~$2–3k, RV condition ~50% by day 30.
+- `npm test`: 126 Vitest tests (simulation, Design Mode data/drafts/blueprints/pricing, a catalog snapshot,
+  terrain, physics). CI runs them before every deploy.
+- `npm run acceptance`: Playwright harness (`acceptance/run.mjs`), 12 sections / 39 checks at 1366×768. The last
+  full run was 39/39 after the S3 merge. After S5, the furnishing, interior, saveload and living sections passed;
+  the furnishing section now drives Design Mode and confirms its draft. Use `--only <section>` while iterating.
+- S6 has not had a full acceptance run yet.
 
 ## Current Work
 
-Visual review pass done (screenshots of both vehicles on Route 89, the byway, Highway 60, Pine Lake, the
-campground, Mesa City, the truck stop and Red Rock Flats, by day and night). Fixed: Class C cockpit (cab now
-a step below the coach), open cab-over bunk, cab/coach opening, mirrors, headliner overhang, walking eye in
-cabs, night too dark (moonlit keys + lamp light pools), vegetation culled beyond the fog, lake at grazing
-angles and at night. UI review of all screens at 1366×768: cargo loading now opens on a valid suggestion,
-RV Status axle bars match the diagram order.
+S6 is partly done (see above). This session found and fixed a bug that dated from S5: the editor's root
+caught every mouse click and dimmed the 3D view (details in `DESIGN_DECISIONS.md`, S6). Clicking a floor in
+the view now selects it. Screenshots of the new tabs from `probe-s6.mjs` (scratchpad) were mostly not
+reviewed yet.
 
 ## Known Issues
 
-- Traffic cars are plain low-poly boxes when seen up close (cosmetic).
-- Performance reference (dev desktop, Chromium, High preset): 60 fps, ~2 ms CPU per frame; heaviest view
-  ~2.0 M triangles / ~280 draw calls (Pine Lake). Plenty of headroom for richer visuals.
-- Bundle is ~1 MB (286 KB gzip); Vite warns about chunk size. Fine for now.
-- Graphics quality changes apply only after reload.
-- Pedestrians/NPCs are simple; no walkable shop interiors (by design for the MVP).
+- Design Mode furniture still uses the old boxy models, light fixtures are placeholder boxes, and some
+  fabric motifs are faint (plaid scale, tweed flecks, quartz veins). All of this is S4.
+- The acceptance harness drives Design Mode only through `window.__rh.design`; nothing tests real mouse
+  input there yet (that is how the click bug got through).
+- Graphics quality changes apply only after a reload. The bundle is about 1 MB, and Vite warns about chunk
+  size. Traffic cars are plain boxes up close.
+- Performance reference (dev desktop, High): 60 fps, about 2 ms CPU per frame, at most about 2.0 M triangles
+  and 280 draw calls (Pine Lake), before Design Mode rendering changes. Re-measure in S7.
 
 ## Next Steps
 
-1. High-end visual upgrades for the High preset: real lights for street lamps and campfires, softer and
-   longer-range shadows, post-processing (bloom for night lights, ambient occlusion), denser vegetation and a
-   longer view distance; review at 1920×1080 and 2560×1440.
-2. Town dressing where sparse (truck stop, Mesa City side streets); more detailed traffic car models.
-3. A hands-on playtest of the first in-game day by a person (onboarding clarity, pacing, prices).
-4. Re-run `npm run acceptance` after gameplay changes (use `--only <section>` while iterating).
+1. **Finish S6.** Add first-person interactions in `src/game/interior.ts`:
+   - fold/unfold transformable furniture (`sim.setItemState`);
+   - open/close window coverings (`sim.setCovering`);
+   - a light switch (`sim.setAllLights`);
+   - open storage (`vv.setItemOpen` once S4 provides it).
+
+   Also add the microwave option to the cook screen (`sim.microwaveCook`, `cookCheck` method `'microwave'`), handle
+   `ok: false` from convertible sleeping in `doSleep`, and offer a Life/Creative choice on New Game
+   (`opts.gameType`). Then review the tab screenshots at 1920×1080 and run the furnishing acceptance section.
+
+   Also from the S6 probe:
+   - Point the camera at the selected window; from the default angle a new covering is hard to see.
+   - Check the refinishing price. Refinishing the frame of an owned double bed came to $176.64, which looks high.
+2. **S4, furniture and fixture models: delegate it** (Codex was usage-limited until 2026-10-25 08:19 UTC). The
+   order is drafted in `.ai/work-order-s4.json`. Before dispatching, add:
+   - a per-piece fade API (finish materials are shared, so fades must not leak to other pieces);
+   - `vv.setItemOpen`;
+   - a model gallery with screenshots;
+   - motif polish.
+
+   Run it in a worktree and review it visually.
+3. **S7, acceptance.** Add harness sections for the plan's 40-step scenario, edge cases and performance,
+   including real mouse clicks in Design Mode. Then run the full `npm run acceptance`.
+4. Merge `design-mode` into `main` and push (that deploys Pages). Update this file.
+5. Clean up the merged worktrees `../rolling-home-s3` (branch `design-mode-s3`) and `../rolling-home-data`
+   (branch `design-mode-data`) with `git worktree remove` and delete their branches.
+6. Later, from before Design Mode: High-preset visual upgrades (street-lamp and campfire lights, softer
+   shadows, AO, denser vegetation), town dressing, better traffic models, and a hands-on playtest of day one.
 
 ## Codex / Delegated Work
 
-None. The user asked for this to be built directly (no Codex available).
+- No worker run is in flight. Codex built S1, S2, the S2 fix, the content refactor and S3; all were reviewed
+  and merged into `design-mode`. Do not re-dispatch them.
+- S5 and S6 were done directly by Claude while Codex was usage-limited.
+- S4 is drafted (`.ai/work-order-s4.json`) and has not been dispatched.
